@@ -138,13 +138,13 @@ You are back at the menu.
 ### Option [1] — Sync course files now
 
 ```
-=== FIT5003 (https://learning.monash.edu/course/view.php?id=45038) ===
+=== FIT5003 (https://learning.monash.edu/course/view.php?id=4***8) ===
 
-=== FIT5136 (https://learning.monash.edu/course/view.php?id=46903) ===
+=== FIT5136 (https://learning.monash.edu/course/view.php?id=4***3) ===
   [Week 3] Wrap-up - 1 item(s)
     + C:\Users\you\Uni 2026\FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
 
-=== FIT5163 (https://learning.monash.edu/course/view.php?id=46949) ===
+=== FIT5163 (https://learning.monash.edu/course/view.php?id=4***9) ===
   [Week 1] Real-time - 3 item(s)
     + C:\Users\you\Uni 2026\FIT5163\Week 01\LN01_intro.pdf
     ...
