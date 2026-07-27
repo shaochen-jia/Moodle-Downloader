@@ -199,6 +199,101 @@ Auto-sync removed.
 关闭程序。(直接点窗口右上角的 X 也一样。已开启的自动同步不受影响——
 它不需要这个窗口开着。)
 
+### 一次完整真实流程(从头到尾)
+
+下面是一次完整的首次使用全过程(路径已匿名化)。你的屏幕会和这个一模
+一样——**你**需要输入的只有:`2`、回车、回车或文件夹路径、`1,2,3,4`、
+`1`、`5`,一共六次:
+
+> ⚠️ **特别提示:输入课程编号时请用英文逗号 `1,2,3,4`,不要用中文逗号
+> `1，2，3，4`。**(工具其实也能自动纠正中文逗号,但养成习惯更稳妥。
+> 切换到英文输入法再输入即可。)
+
+```
+=== Moodle Downloader ===
+  [1] Sync course files now
+  [2] First-time setup / change courses
+  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [4] Turn OFF auto-sync
+  [5] Exit
+Choose an option: 2
+
+=== Moodle Downloader - first-time setup ===
+
+Moodle address (press Enter if you are at Monash) [https://learning.monash.edu]:
+Folder where course files should be saved [C:\Users\you\MoodleFiles]: C:\Users\you\Desktop\Uni 2026
+
+Now fetching your course list from Moodle.
+If a browser window opens, log in with your university account
+(tick 'Keep me signed in' so this rarely happens again).
+
+Found 23 enrolled courses (* = starred on Moodle):
+
+   1. * FIT5163 Introduction to cryptography for cybersecurity - S2 2026
+   2. * FIT5234 Advanced business information systems analysis and design - S2 2026
+   3. * FIT5136 Software engineering - S2 2026
+   4. * FIT5003 Software security - S2 2026
+   5.   FIT5057 Project management - S1 2026
+   6.   FIT5129 Cyber operations - S1 2026
+   ...           (你注册过的每一门课,最新学期在最上面)
+  23. * IT Student Portal
+
+Which courses should be synced?
+  - numbers separated by commas, e.g.:  1,2,3,4
+  - or type  star  to always sync the courses you star on Moodle
+> 1,2,3,4
+
+Selected: FIT5163, FIT5234, FIT5136, FIT5003
+
+Setup complete! Settings saved to C:\Users\you\Desktop\MoodleDownloader\config.yaml
+
+=== Moodle Downloader ===
+  [1] Sync course files now
+  [2] First-time setup / change courses
+  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [4] Turn OFF auto-sync
+  [5] Exit
+Choose an option: 1
+
+=== FIT5163 (https://learning.monash.edu/course/view.php?id=00000) ===
+  [Week 1] Own-time - 2 item(s)
+    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\Week 1  PollEv Questions and Answers.pdf
+    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\Essential Information for FIT Students.pdf
+  [Week 1] Real-time - 3 item(s)
+    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\LN01_intro.pdf
+    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\LN00_unitinfo.pdf
+    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\Applied 1.docx.pdf
+
+=== FIT5234 (https://learning.monash.edu/course/view.php?id=00000) ===
+  [Week 1] Real-time - 4 item(s)
+    + C:\Users\you\Desktop\Uni 2026\FIT5234\Week 01\FIT5234 Seminar 1 - Intra- and Inter-organizational BIS.pdf
+    ...
+  [Week 2] Real-time - 2 item(s)
+    + C:\Users\you\Desktop\Uni 2026\FIT5234\Week 02\FIT5234 Seminar - 2 Intra-organizational BIS.pdf
+    ...
+
+=== FIT5136 (https://learning.monash.edu/course/view.php?id=00000) ===
+  [Week 3] Wrap-up - 1 item(s)
+    + C:\Users\you\Desktop\Uni 2026\FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
+  [Week 8] Wrap-up - 1 item(s)
+    + C:\Users\you\Desktop\Uni 2026\FIT5136\Week 08\Michael Quinn Ch 8.pdf
+
+=== FIT5003 (https://learning.monash.edu/course/view.php?id=00000) ===
+
+Done. 13 new file(s) downloaded.
+
+=== Moodle Downloader ===
+  [1] Sync course files now
+  [2] First-time setup / change courses
+  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [4] Turn OFF auto-sync
+  [5] Exit
+Choose an option: 5
+```
+
+到此结束——以后要么偶尔双击按个 `1`,要么按一次 `3` 开启自动同步,
+彻底忘掉这件事。
+
 ## 开发者 / macOS / Linux
 
 需要 Python 3.10+。

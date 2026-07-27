@@ -79,7 +79,9 @@ def run_setup(config_path: Path) -> Config | None:
     print("Which courses should be synced?")
     print("  - numbers separated by commas, e.g.:  1,2,3,4")
     print("  - or type  star  to always sync the courses you star on Moodle")
-    choice = input("> ").strip().lower()
+    # tolerate full-width (Chinese IME) commas and stray spaces
+    choice = (input("> ").replace("，", ",").replace("、", ",")
+              .strip().lower())
 
     if choice in ("star", "starred", "s"):
         course_selection = "starred"
