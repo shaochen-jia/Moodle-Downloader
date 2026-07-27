@@ -46,8 +46,8 @@ def menu() -> int:
         print("=== Moodle Downloader ===")
         print("  [1] Sync course files now")
         print("  [2] First-time setup / change courses")
-        print("  [3] Turn ON daily auto-sync")
-        print("  [4] Turn OFF daily auto-sync")
+        print("  [3] Turn ON auto-sync (runs at Windows login + daily)")
+        print("  [4] Turn OFF auto-sync")
         print("  [5] Exit")
         try:
             choice = input("Choose an option: ").strip()
@@ -68,9 +68,8 @@ def menu() -> int:
                 print("Auto-sync setup is Windows-only for now; "
                       "use cron on macOS/Linux.")
                 continue
-            from moodle_dl.schedule_win import enable_daily
-            t = input("Sync at what time each day? [09:00]: ").strip() or "09:00"
-            enable_daily(t)
+            from moodle_dl.schedule_win import enable
+            enable()
         elif choice == "4":
             if sys.platform != "win32":
                 continue
