@@ -1,0 +1,17 @@
+# login session (contains your Moodle cookies - never commit!)
+.moodle_session/
+
+# downloaded files (if you keep root_dir inside the repo)
+MoodleFiles/
+
+# your personal course selection
+config.yaml
+
+# build artifacts
+build/
+dist/
+*.spec
+
+__pycache__/
+*.pyc
+.venv/
