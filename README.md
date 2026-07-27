@@ -1,5 +1,7 @@
 # Moodle Downloader
 
+English | [简体中文](README.zh-CN.md)
+
 Automatically downloads your (Monash) Moodle course files into tidy weekly
 folders — `FIT5003/Week 01`, `Week 02`, … — and keeps them up to date all
 semester. Late-released files (tutorial solutions, extra slides) are picked up
