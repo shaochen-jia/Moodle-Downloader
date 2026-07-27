@@ -29,6 +29,176 @@
 你的密码只会输入在大学官方登录页面里,本工具不存储、也看不到你的密码。
 登录 cookie 保存在本机的 `%LOCALAPPDATA%\moodle-downloader`。
 
+## 逐步教学(你实际会看到的每一个画面)
+
+### 第一次打开
+
+双击 `MoodleDownloader.exe`。
+
+> Windows 第一次可能弹出蓝色的 **"Windows 已保护你的电脑"** 提示——这是
+> 免费软件没有付费签名证书的正常现象。点 **更多信息 → 仍要运行** 即可。
+
+之后出现一个终端窗口,显示主菜单:
+
+```
+=== Moodle Downloader ===
+  [1] Sync course files now
+  [2] First-time setup / change courses
+  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [4] Turn OFF auto-sync
+  [5] Exit
+Choose an option:
+```
+
+五个选项的意思:**[1] 立即同步文件、[2] 首次设置/更换课程、[3] 开启自动
+同步(开机登录时+每天)、[4] 关闭自动同步、[5] 退出**。
+输入数字后按**回车**。全新安装先输 `2`。
+(如果没设置过就直接按 `1`,程序也会自动带你先做设置。)
+
+### 选项 [2] —— 首次设置
+
+**第一个问题——你的 Moodle 网址:**
+
+```
+=== Moodle Downloader - first-time setup ===
+
+Moodle address (press Enter if you are at Monash) [https://learning.monash.edu]:
+```
+
+Monash 学生:**直接回车**。其他学校:先粘贴你学校的 Moodle 网址。
+
+**第二个问题——文件存到哪里:**
+
+```
+Folder where course files should be saved [C:\Users\you\MoodleFiles]:
+```
+
+输入(或粘贴)你想要的文件夹完整路径,比如
+`C:\Users\you\Desktop\Uni 2026`,然后回车;也可以直接回车用方括号里的
+默认位置。文件夹不存在会自动创建。
+小技巧:可以在 Windows 资源管理器的地址栏里复制文件夹路径。
+
+**登录环节:**
+
+```
+Now fetching your course list from Moodle.
+If a browser window opens, log in with your university account
+(tick 'Keep me signed in' so this rarely happens again).
+```
+
+此时会发生两种情况之一:
+
+- **第一次使用**:弹出浏览器窗口,停在学校官方登录页。你自己完成登录
+  (账号、密码、MFA),**记得勾选 "Keep me signed in / 保持登录"**。
+  登录完窗口会自动关闭。密码只输入在学校自己的页面里,工具看不到。
+- **最近登录过**:浏览器可能一闪而过、几秒内自动关闭——那是工具在确认
+  你保存的登录状态还有效,**不需要你做任何事**,这是正常现象。
+
+**选择课程:**
+
+```
+Found 23 enrolled courses (* = starred on Moodle):
+
+   1. * FIT5163 Introduction to cryptography for cybersecurity - S2 2026
+   2. * FIT5234 Advanced business information systems analysis and design - S2 2026
+   3. * FIT5136 Software engineering - S2 2026
+   4. * FIT5003 Software security - S2 2026
+   5.   Yearly refresher of key Monash principles and values 2026
+   6.   FIT4005-FIT5125 IT research and innovation methods - S1 2026
+   ...
+  23. * IT Student Portal
+
+Which courses should be synced?
+  - numbers separated by commas, e.g.:  1,2,3,4
+  - or type  star  to always sync the courses you star on Moodle
+> 
+```
+
+你**注册过的所有课程**都会列出来,**最新学期排最前**,所以本学期的课就在
+最上面几行。带 `*` 号的是你自己在 Moodle 上加过星标(starred)的课。
+
+- 输入例如 `1,2,3,4` 回车 → 固定同步这几门课;
+- 或输入 `star` 回车 → 永远同步你在 Moodle 上加星的课(以后在 Moodle
+  里改星标,工具自动跟随;像 "IT Student Portal" 这类加了星但不是课程的
+  页面会被自动过滤掉)。
+
+```
+Selected: FIT5163, FIT5234, FIT5136, FIT5003
+
+Setup complete! Settings saved to C:\...\config.yaml
+```
+
+设置完成,回到主菜单。
+
+### 选项 [1] —— 立即同步
+
+```
+=== FIT5003 (https://learning.monash.edu/course/view.php?id=45038) ===
+
+=== FIT5136 (https://learning.monash.edu/course/view.php?id=46903) ===
+  [Week 3] Wrap-up - 1 item(s)
+    + C:\Users\you\Uni 2026\FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
+
+=== FIT5163 (https://learning.monash.edu/course/view.php?id=46949) ===
+  [Week 1] Real-time - 3 item(s)
+    + C:\Users\you\Uni 2026\FIT5163\Week 01\LN01_intro.pdf
+    ...
+
+Done. 10 new file(s) downloaded.
+```
+
+- 每一行开头的 `+` 表示**新下载**的文件,后面就是它落地的位置;
+- 只显示课程名、下面空空的(如上面的 FIT5003),说明这门课还没发布文件;
+- 紧接着再跑一次会显示 `Done. 0 new file(s) downloaded.`——任何文件
+  都不会被重复下载。
+
+如果保存的登录状态过期了,同步前会先显示:
+
+```
+Session expired or first run - opening a browser window so you can log in (SSO + MFA)...
+Please log in to Moodle in the browser window (waiting up to 10 minutes)...
+TIP: tick 'Keep me signed in' on the Okta page so future runs skip MFA.
+(Don't close the window - it closes by itself when the download finishes.)
+```
+
+在弹出的窗口里重新登录即可,同步会自动继续。**不要手动关那个窗口**,
+它下载完会自己关。
+
+### 选项 [3] —— 开启自动同步
+
+```
+Done - your files now sync automatically:
+  - every time you log in to Windows (1 minute after logon)
+  - plus a daily 09:00 run if the PC is already on
+(A small console window appears briefly while it runs.)
+```
+
+意思是:**每次开机登录 Windows 后 1 分钟自动同步一次**,外加电脑开着时
+每天 9 点一次。有些学校/公司管控的电脑禁止注册计划任务,工具会自动改用
+备用方案,并显示:
+
+```
+Done - your files now sync automatically every time you log in to Windows.
+```
+
+对你来说效果一样:登录 Windows 大约一分钟后,会有一个小终端窗口自己
+打开、同步、自己关闭。所以就算你今天晚上才第一次开电脑,当天的新文件
+照样会到。
+
+注意:自动同步记录的是 exe 当前的位置。以后如果**挪动了 exe**,进菜单
+按 `4` 再按 `3` 重新登记一次即可。
+
+### 选项 [4] —— 关闭自动同步
+
+```
+Auto-sync removed.
+```
+
+### 选项 [5] —— 退出
+
+关闭程序。(直接点窗口右上角的 X 也一样。已开启的自动同步不受影响——
+它不需要这个窗口开着。)
+
 ## 开发者 / macOS / Linux
 
 需要 Python 3.10+。
