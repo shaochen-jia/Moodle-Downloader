@@ -21,11 +21,14 @@ Your folder/
 
 1. Download `MoodleDownloader.exe` from
    [Releases](../../releases) and put it in any folder.
-2. Double-click it and pick **setup**: it opens a browser window — log in to
-   Moodle yourself (tick **"Keep me signed in"**), then choose your courses
-   from a list. No course IDs, no config files.
-3. Pick **Sync course files now** — done. Files appear in your chosen folder.
-4. Optionally pick **Turn ON daily auto-sync** so it runs every day by itself.
+2. Double-click it — a small app window opens. Choose where files should be
+   saved, click **Load my courses from Moodle**, and log in when the browser
+   window appears (tick **"Keep me signed in"**). No course IDs, no config
+   files.
+3. Tick the courses you want and click **Finish and run first sync** — files
+   appear in your chosen folder, sorted into weekly folders.
+4. Leave the **Auto-sync** switch on and forget about it: new files arrive by
+   themselves, silently, in the background.
 
 Your password is typed only into the real university login page, never stored
 or seen by the tool. Login cookies are kept locally in

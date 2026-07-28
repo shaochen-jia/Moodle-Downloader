@@ -19,12 +19,14 @@
 ## 普通用户(Windows,无需安装任何东西)
 
 1. 从 [Releases](../../releases) 下载 `MoodleDownloader.exe`,放到任意文件夹;
-2. 双击运行,选择 **setup(首次设置)**:会弹出一个浏览器窗口——你自己登录
-   Moodle(记得勾选 **"Keep me signed in / 保持登录"**),然后从列表里
-   选择你的课程。**不需要抄课程 ID,不需要改配置文件**;
-3. 选择 **Sync course files now(立即同步)**——完成,文件出现在你指定的文件夹;
-4. 建议再选择 **Turn ON auto-sync(开启自动同步)**,以后每次开机登录
-   Windows 都会自动同步,彻底不用管。
+2. 双击打开,出现一个小窗口。选好课件保存的文件夹,点
+   **Load my courses from Moodle(加载我的课程)**,在弹出的浏览器里登录
+   (记得勾选 **"Keep me signed in / 保持登录"**)。**不需要抄课程 ID,
+   也不用改配置文件**;
+3. 勾选你要同步的课,点 **Finish and run first sync(完成并开始同步)**
+   ——文件就按周归入文件夹了;
+4. 保持 **Auto-sync(自动同步)** 开关打开即可,以后新文件会在后台静默
+   自动到达,完全不用管。
 
 你的密码只会输入在大学官方登录页面里,本工具不存储、也看不到你的密码。
 登录 cookie 保存在本机的 `%LOCALAPPDATA%\moodle-downloader`。

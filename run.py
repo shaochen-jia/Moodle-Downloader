@@ -148,7 +148,11 @@ def autosync_loop(config_path: Path) -> int:
 
 def cli() -> int:
     if len(sys.argv) == 1:
-        return menu()
+        try:
+            from moodle_dl.gui import run_gui
+        except Exception:
+            return menu()  # no GUI toolkit available - use the text menu
+        return run_gui(default_config_path())
 
     ap = argparse.ArgumentParser(prog="moodle-dl", description=__doc__)
     ap.add_argument("-c", "--config", default=str(default_config_path()),

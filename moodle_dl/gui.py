@@ -1,0 +1,493 @@
+"""Desktop GUI - a flat, minimal front-end over the same sync engine the CLI
+uses.
+
+All Moodle work (login, course discovery, syncing) runs in worker threads so
+the window never freezes; results come back through a queue polled with Tk's
+after().
+"""
+from __future__ import annotations
+
+import contextlib
+import io
+import os
+import queue
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+from tkinter import filedialog
+
+import customtkinter as ctk
+
+from . import __version__, theme as t
+from .config import Config, load_config
+from .courses import Course, fetch_courses
+from .main import sync
+from .session import MoodleSession
+from .setup_wizard import DEFAULT_URL, write_config
+
+ctk.set_appearance_mode("system")
+
+
+def _font(size: int = 13, bold: bool = False) -> ctk.CTkFont:
+    return ctk.CTkFont(family=t.FONT, size=size,
+                       weight="bold" if bold else "normal")
+
+
+def _mono(size: int = 12) -> ctk.CTkFont:
+    return ctk.CTkFont(family=t.MONO, size=size)
+
+
+def _card(parent, **kw) -> ctk.CTkFrame:
+    return ctk.CTkFrame(parent, fg_color=t.CARD, border_color=t.BORDER,
+                        border_width=1, corner_radius=t.RADIUS_CARD, **kw)
+
+
+def _rule(parent) -> ctk.CTkFrame:
+    line = ctk.CTkFrame(parent, height=1, fg_color=t.BORDER, corner_radius=0)
+    line.pack(fill="x")
+    return line
+
+
+def _primary(parent, text, command, **kw) -> ctk.CTkButton:
+    return ctk.CTkButton(parent, text=text, command=command, height=38,
+                         corner_radius=t.RADIUS_CTL, font=_font(14),
+                         fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
+                         text_color=t.ON_ACCENT, **kw)
+
+
+def _ghost(parent, text, command, **kw) -> ctk.CTkButton:
+    return ctk.CTkButton(parent, text=text, command=command, height=34,
+                         corner_radius=t.RADIUS_CTL, font=_font(13),
+                         fg_color="transparent", hover_color=t.GHOST_HOVER,
+                         text_color=t.TEXT, border_width=1,
+                         border_color=t.BORDER_STRONG, **kw)
+
+
+def _label(parent, text, size=13, color=None, bold=False, **kw):
+    return ctk.CTkLabel(parent, text=text, font=_font(size, bold),
+                        text_color=color or t.TEXT, **kw)
+
+
+class _QueueWriter(io.TextIOBase):
+    """Redirects the sync engine's prints into the GUI log."""
+
+    def __init__(self, q: queue.Queue):
+        self.q = q
+
+    def write(self, text: str) -> int:
+        if text.strip():
+            self.q.put(("log", text.rstrip()))
+        return len(text)
+
+
+class App(ctk.CTk):
+    def __init__(self, config_path: Path):
+        super().__init__()
+        self.config_path = config_path
+        self.q: queue.Queue = queue.Queue()
+        self.busy = False
+        self.courses: list[Course] = []
+        self.course_vars: list[ctk.BooleanVar] = []
+        self.log_box = None
+        self.status_label = None
+
+        self.title("Moodle Downloader")
+        self.geometry("680x620")
+        self.minsize(600, 540)
+        self.configure(fg_color=t.PAGE)
+
+        if config_path.exists():
+            self._build_dashboard()
+        else:
+            self._build_setup()
+        self.after(120, self._poll)
+
+    # ------------------------------------------------------------------ utils
+
+    def _clear(self) -> None:
+        for w in self.winfo_children():
+            w.destroy()
+        self.log_box = None
+        self.status_label = None
+
+    def _run_bg(self, fn) -> None:
+        threading.Thread(target=fn, daemon=True).start()
+
+    def _poll(self) -> None:
+        try:
+            while True:
+                kind, payload = self.q.get_nowait()
+                if kind == "log":
+                    self._append_log(payload)
+                elif kind == "status":
+                    self._set_status(payload)
+                elif kind == "done":
+                    self._on_done(payload)
+                elif kind == "courses":
+                    self._show_courses(payload)
+                elif kind == "error":
+                    self._append_log(f"! {payload}")
+                    self._set_status("Something went wrong - see the log below")
+                    self.busy = False
+                    self._set_buttons(enabled=True)
+        except queue.Empty:
+            pass
+        self.after(120, self._poll)
+
+    def _append_log(self, line: str) -> None:
+        if self.log_box is None or not self.log_box.winfo_exists():
+            return
+        stamp = time.strftime("%H:%M")
+        self.log_box.configure(state="normal")
+        self.log_box.insert("end", f"{stamp}  {line}\n")
+        self.log_box.see("end")
+        self.log_box.configure(state="disabled")
+
+    def _set_status(self, text: str, color=None) -> None:
+        if self.status_label is not None and self.status_label.winfo_exists():
+            self.status_label.configure(text=text,
+                                        text_color=color or t.TEXT_SECONDARY)
+
+    def _set_buttons(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        for name in ("sync_btn", "setup_btn", "finish_btn", "fetch_btn"):
+            btn = getattr(self, name, None)
+            if btn is not None and btn.winfo_exists():
+                btn.configure(state=state)
+
+    # -------------------------------------------------------------- dashboard
+
+    def _build_dashboard(self) -> None:
+        self._clear()
+        cfg = load_config(self.config_path)
+
+        page = ctk.CTkFrame(self, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=22, pady=20)
+
+        card = _card(page)
+        card.pack(fill="both", expand=True)
+
+        head = ctk.CTkFrame(card, fg_color="transparent", height=48)
+        head.pack(fill="x", padx=18, pady=(14, 12))
+        _label(head, "Moodle Downloader", size=16, bold=True).pack(side="left")
+        self.dot = _label(head, "●", size=11, color=t.SUCCESS)
+        self.dot.pack(side="left", padx=(12, 5))
+        self.status_label = _label(head, self._last_sync_text(cfg), size=12,
+                                   color=t.TEXT_SECONDARY)
+        self.status_label.pack(side="left")
+        _rule(card)
+
+        actions = ctk.CTkFrame(card, fg_color="transparent")
+        actions.pack(fill="x", padx=18, pady=16)
+        self.sync_btn = _primary(actions, "Sync now", self._start_sync)
+        self.sync_btn.pack(side="left", expand=True, fill="x")
+        self.auto_var = ctk.BooleanVar(value=self._autosync_on())
+        sw = ctk.CTkSwitch(actions, text="Auto-sync", variable=self.auto_var,
+                           command=self._toggle_autosync, font=_font(13),
+                           text_color=t.TEXT_SECONDARY, width=48,
+                           switch_width=40, switch_height=20,
+                           fg_color=t.BORDER_STRONG, progress_color=t.SUCCESS,
+                           button_color=("#FFFFFF", "#FFFFFF"),
+                           button_hover_color=("#FFFFFF", "#FFFFFF"))
+        sw.pack(side="left", padx=16)
+        _ghost(actions, "Open folder",
+               lambda: self._open_folder(cfg)).pack(side="left")
+
+        self.stats = ctk.CTkFrame(card, fg_color="transparent")
+        self.stats.pack(fill="x", padx=18, pady=(0, 14))
+        self._render_stats(cfg)
+
+        self.log_box = ctk.CTkTextbox(
+            card, state="disabled", font=_mono(12), fg_color=t.SUBTLE,
+            text_color=t.TEXT_SECONDARY, border_width=0,
+            corner_radius=t.RADIUS_CTL, wrap="none")
+        self.log_box.pack(fill="both", expand=True, padx=18, pady=(0, 16))
+
+        _rule(card)
+        foot = ctk.CTkFrame(card, fg_color="transparent")
+        foot.pack(fill="x", padx=18, pady=10)
+        self.setup_btn = ctk.CTkButton(
+            foot, text="Change courses", command=self._build_setup,
+            height=26, width=110, corner_radius=t.RADIUS_CTL, font=_font(12),
+            fg_color="transparent", hover_color=t.GHOST_HOVER,
+            text_color=t.TEXT_SECONDARY, border_width=0)
+        self.setup_btn.pack(side="left")
+        _label(foot, f"Every {cfg.sync_interval_hours:g} hours", size=12,
+               color=t.TEXT_MUTED).pack(side="left", padx=14)
+        _label(foot, f"v{__version__}", size=12,
+               color=t.TEXT_MUTED).pack(side="right")
+
+    def _render_stats(self, cfg: Config, new_counts: dict | None = None) -> None:
+        for w in self.stats.winfo_children():
+            w.destroy()
+        codes = [u.code for u in cfg.units]
+        if not codes and cfg.root_dir.exists():
+            codes = sorted(p.name for p in cfg.root_dir.iterdir()
+                           if p.is_dir() and not p.name.startswith("."))
+        for i, code in enumerate(codes[:6]):
+            self.stats.grid_columnconfigure(i, weight=1, uniform="stat")
+            tile = ctk.CTkFrame(self.stats, fg_color=t.SUBTLE,
+                                corner_radius=t.RADIUS_CTL)
+            tile.grid(row=0, column=i, padx=(0 if i == 0 else 8, 0), sticky="ew")
+            _label(tile, code, size=12, color=t.TEXT_MUTED,
+                   anchor="w").pack(fill="x", padx=12, pady=(10, 0))
+            n = self._count_files(cfg.root_dir / code)
+            extra = (new_counts or {}).get(code, 0)
+            _label(tile, f"{n} files", size=14, bold=True,
+                   anchor="w").pack(fill="x", padx=12, pady=(0, 2))
+            _label(tile, f"+{extra} new" if extra else " ", size=11,
+                   color=t.SUCCESS if extra else t.TEXT_MUTED,
+                   anchor="w").pack(fill="x", padx=12, pady=(0, 10))
+
+    @staticmethod
+    def _count_files(unit_dir: Path) -> int:
+        try:
+            return sum(1 for p in unit_dir.rglob("*")
+                       if p.is_file() and not p.name.startswith("."))
+        except OSError:
+            return 0
+
+    def _last_sync_text(self, cfg: Config) -> str:
+        try:
+            ts = cfg.manifest_path.stat().st_mtime
+            return "Last synced " + time.strftime("%a %H:%M", time.localtime(ts))
+        except OSError:
+            return "Not synced yet"
+
+    def _open_folder(self, cfg: Config) -> None:
+        try:
+            os.startfile(str(cfg.root_dir))
+        except OSError:
+            self._append_log("The download folder doesn't exist yet - "
+                             "run a sync first.")
+
+    def _autosync_on(self) -> bool:
+        if sys.platform != "win32":
+            return False
+        from .schedule_win import TASK_NAME, _run, autosync_enabled
+        if autosync_enabled():
+            return True
+        return _run(["schtasks", "/Query", "/TN", TASK_NAME]).returncode == 0
+
+    def _toggle_autosync(self) -> None:
+        from .schedule_win import disable, enable
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            if self.auto_var.get():
+                hours = 3
+                try:
+                    hours = max(1, round(load_config(self.config_path)
+                                         .sync_interval_hours))
+                except Exception:
+                    pass
+                self.auto_var.set(enable(hours))
+            else:
+                disable()
+        for line in buf.getvalue().splitlines():
+            self._append_log(line)
+
+    def _start_sync(self) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self._set_buttons(enabled=False)
+        self.sync_btn.configure(text="Syncing...")
+        self.dot.configure(text_color=t.TEXT_MUTED)
+        self._set_status("Checking Moodle for new files")
+
+        def work():
+            try:
+                cfg = load_config(self.config_path)
+                with contextlib.redirect_stdout(_QueueWriter(self.q)), \
+                        contextlib.redirect_stderr(_QueueWriter(self.q)):
+                    sync(cfg)
+                self.q.put(("done", "sync"))
+            except Exception as e:
+                self.q.put(("error", str(e)))
+
+        self._run_bg(work)
+
+    def _on_done(self, what: str) -> None:
+        self.busy = False
+        self._set_buttons(enabled=True)
+        if what != "sync":
+            return
+        if self.sync_btn.winfo_exists():
+            self.sync_btn.configure(text="Sync now")
+        self.dot.configure(text_color=t.SUCCESS)
+        try:
+            cfg = load_config(self.config_path)
+            self._render_stats(cfg)
+            self._set_status(self._last_sync_text(cfg))
+        except Exception:
+            self._set_status("Sync finished")
+
+    # ------------------------------------------------------------------ setup
+
+    def _build_setup(self) -> None:
+        self._clear()
+        page = ctk.CTkFrame(self, fg_color="transparent")
+        page.pack(fill="both", expand=True, padx=22, pady=20)
+
+        _label(page, "Set up Moodle Downloader", size=16, bold=True,
+               anchor="w").pack(fill="x")
+        self.status_label = _label(
+            page, "Choose where files go, then load your course list.",
+            size=12, color=t.TEXT_SECONDARY, anchor="w", wraplength=600,
+            justify="left")
+        self.status_label.pack(fill="x", pady=(4, 14))
+
+        form = _card(page)
+        form.pack(fill="x")
+        inner = ctk.CTkFrame(form, fg_color="transparent")
+        inner.pack(fill="x", padx=18, pady=16)
+
+        _label(inner, "Moodle address", size=12, color=t.TEXT_SECONDARY,
+               anchor="w").pack(fill="x")
+        self.url_entry = ctk.CTkEntry(
+            inner, height=36, corner_radius=t.RADIUS_CTL, font=_font(13),
+            fg_color=t.SUBTLE, border_color=t.BORDER, text_color=t.TEXT)
+        self.url_entry.insert(0, self._current("base_url", DEFAULT_URL))
+        self.url_entry.pack(fill="x", pady=(4, 12))
+
+        _label(inner, "Save course files to", size=12, color=t.TEXT_SECONDARY,
+               anchor="w").pack(fill="x")
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(4, 0))
+        self.dir_entry = ctk.CTkEntry(
+            row, height=36, corner_radius=t.RADIUS_CTL, font=_font(13),
+            fg_color=t.SUBTLE, border_color=t.BORDER, text_color=t.TEXT)
+        self.dir_entry.insert(0, self._current(
+            "root_dir", str(self.config_path.parent / "MoodleFiles")))
+        self.dir_entry.pack(side="left", expand=True, fill="x")
+        _ghost(row, "Browse", self._browse, width=90).pack(side="left",
+                                                           padx=(8, 0))
+
+        self.fetch_btn = _ghost(page, "Load my courses from Moodle",
+                                self._start_fetch)
+        self.fetch_btn.configure(height=38, font=_font(13))
+        self.fetch_btn.pack(fill="x", pady=14)
+
+        list_card = _card(page)
+        list_card.pack(fill="both", expand=True)
+        self.course_frame = ctk.CTkScrollableFrame(
+            list_card, fg_color="transparent", corner_radius=t.RADIUS_CARD)
+        self.course_frame.pack(fill="both", expand=True, padx=6, pady=6)
+        self.course_hint = _label(
+            self.course_frame,
+            "Your courses appear here once loaded.",
+            size=12, color=t.TEXT_MUTED, anchor="w")
+        self.course_hint.pack(fill="x", padx=10, pady=10)
+
+        self.star_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            page, text="Always sync whatever I star on Moodle",
+            variable=self.star_var, font=_font(12),
+            text_color=t.TEXT_SECONDARY, checkbox_width=18, checkbox_height=18,
+            corner_radius=4, border_width=1, border_color=t.BORDER_STRONG,
+            fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
+            checkmark_color=t.ON_ACCENT).pack(anchor="w", pady=12)
+
+        self.finish_btn = _primary(page, "Finish and run first sync",
+                                   self._finish)
+        self.finish_btn.configure(state="disabled")
+        self.finish_btn.pack(fill="x")
+
+    def _current(self, attr: str, default: str) -> str:
+        try:
+            return str(getattr(load_config(self.config_path), attr))
+        except Exception:
+            return default
+
+    def _browse(self) -> None:
+        chosen = filedialog.askdirectory(title="Choose where course files go")
+        if chosen:
+            self.dir_entry.delete(0, "end")
+            self.dir_entry.insert(0, chosen.replace("/", os.sep))
+
+    def _start_fetch(self) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self._set_buttons(enabled=False)
+        self.fetch_btn.configure(text="Loading...")
+        base_url = self.url_entry.get().strip().rstrip("/") or DEFAULT_URL
+        self._set_status("Contacting Moodle. If a browser window opens, log "
+                         "in there and tick 'Keep me signed in'.")
+
+        def work():
+            try:
+                cfg = Config(
+                    base_url=base_url,
+                    root_dir=self.config_path.parent / "MoodleFiles",
+                    week_start=0, week_end=12, units=[], section_patterns=[],
+                    unmatched_folder="_Other", skip_extensions=[],
+                    config_dir=self.config_path.parent)
+                with MoodleSession(cfg) as sess:
+                    courses = fetch_courses(sess, base_url, "all")
+                courses.sort(key=lambda c: -c.startdate)
+                self.q.put(("courses", courses))
+            except Exception as e:
+                self.q.put(("error", str(e)))
+
+        self._run_bg(work)
+
+    def _show_courses(self, courses: list[Course]) -> None:
+        self.busy = False
+        self._set_buttons(enabled=True)
+        self.fetch_btn.configure(text="Reload course list")
+        self.courses = courses
+        self.course_vars = []
+        for w in self.course_frame.winfo_children():
+            w.destroy()
+
+        for i, c in enumerate(courses):
+            var = ctk.BooleanVar(value=c.starred and i < 8)
+            self.course_vars.append(var)
+            row = ctk.CTkFrame(self.course_frame, fg_color="transparent")
+            row.pack(fill="x")
+            star = "★  " if c.starred else "     "
+            ctk.CTkCheckBox(
+                row, text=star + c.fullname[:74], variable=var,
+                font=_font(13), text_color=t.TEXT if c.starred
+                else t.TEXT_SECONDARY,
+                checkbox_width=18, checkbox_height=18, corner_radius=4,
+                border_width=1, border_color=t.BORDER_STRONG,
+                fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
+                checkmark_color=t.ON_ACCENT).pack(anchor="w", padx=10, pady=7)
+            if i < len(courses) - 1:
+                _rule(self.course_frame)
+
+        self.finish_btn.configure(state="normal")
+        self._set_status(f"{len(courses)} courses found - newest semester "
+                         "first, ★ marks the ones you starred on Moodle.")
+
+    def _finish(self) -> None:
+        if self.busy:
+            return
+        base_url = self.url_entry.get().strip().rstrip("/") or DEFAULT_URL
+        root_dir = self.dir_entry.get().strip()
+        if not root_dir:
+            self._set_status("Choose a folder first.", t.DANGER)
+            return
+        if self.star_var.get():
+            selection, picked = "starred", []
+        else:
+            picked = [c for c, v in zip(self.courses, self.course_vars)
+                      if v.get()]
+            if not picked:
+                self._set_status("Tick at least one course, or choose the "
+                                 "star option.", t.DANGER)
+                return
+            selection = "manual"
+        write_config(self.config_path, base_url, root_dir, selection, picked)
+        self._build_dashboard()
+        self._append_log("Settings saved - starting your first sync")
+        self._start_sync()
+
+
+def run_gui(config_path: Path) -> int:
+    App(config_path).mainloop()
+    return 0

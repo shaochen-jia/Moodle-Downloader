@@ -52,6 +52,23 @@ def _temp_config(base_url: str, config_path: Path) -> Config:
     )
 
 
+def write_config(config_path: Path, base_url: str, root_dir: str,
+                 course_selection: str, picked: list[Course]) -> Config:
+    """Write config.yaml - shared by the CLI wizard and the GUI."""
+    if course_selection == "starred":
+        units_yaml = "  []  # resolved from your starred courses at each run\n"
+    else:
+        units_yaml = "".join(
+            f"  - code: {c.unit_code}\n    course_id: {c.id}\n" for c in picked)
+    config_path.write_text(CONFIG_TEMPLATE.format(
+        base_url=base_url.rstrip("/"),
+        root_dir=root_dir.replace("\\", "/"),
+        course_selection=course_selection,
+        units_yaml=units_yaml,
+    ), encoding="utf-8")
+    return load_config(config_path)
+
+
 def _ask(prompt: str, default: str) -> str:
     val = input(f"{prompt} [{default}]: ").replace("﻿", "").strip()
     return val or default
@@ -91,12 +108,11 @@ def run_setup(config_path: Path) -> Config | None:
     choice = (input("> ").replace("，", ",").replace("、", ",")
               .strip().lower())
 
+    picked: list[Course] = []
     if choice in ("star", "starred", "s"):
         course_selection = "starred"
-        units_yaml = "  []  # resolved from your starred courses at each run\n"
     else:
         course_selection = "manual"
-        picked: list[Course] = []
         try:
             for tok in choice.replace(" ", "").split(","):
                 if tok:
@@ -107,17 +123,11 @@ def run_setup(config_path: Path) -> Config | None:
         if not picked:
             print("Nothing selected - please run setup again.")
             return None
-        units_yaml = "".join(
-            f"  - code: {c.unit_code}\n    course_id: {c.id}\n" for c in picked)
         print()
         print("Selected: " + ", ".join(c.unit_code for c in picked))
 
-    config_path.write_text(CONFIG_TEMPLATE.format(
-        base_url=base_url,
-        root_dir=root_dir.replace("\\", "/"),
-        course_selection=course_selection,
-        units_yaml=units_yaml,
-    ), encoding="utf-8")
+    cfg = write_config(config_path, base_url, root_dir,
+                       course_selection, picked)
     print()
     print("Setup complete! Settings saved to config.yaml next to the app.")
-    return load_config(config_path)
+    return cfg

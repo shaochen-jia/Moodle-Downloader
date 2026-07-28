@@ -8,6 +8,14 @@ from pathlib import Path
 
 TASK_NAME = "MoodleDownloader"
 
+# Keeps schtasks from flashing a console window in the windowed build
+_NO_WINDOW = 0x08000000 if os.name == "nt" else 0
+
+
+def _run(args) -> subprocess.CompletedProcess:
+    return subprocess.run(args, capture_output=True, text=True,
+                          creationflags=_NO_WINDOW)
+
 # Preferred route: a scheduled task that fires at logon and then repeats
 # every few hours all day. StartWhenAvailable catches missed runs after
 # boot/wake, so people who first turn the PC on at night still sync.
@@ -90,10 +98,8 @@ def _enable_task(interval_hours: int) -> bool:
         f.write(xml)
         xml_path = f.name
     try:
-        result = subprocess.run(
-            ["schtasks", "/Create", "/TN", TASK_NAME,
-             "/XML", xml_path, "/F"],
-            capture_output=True, text=True)
+        result = _run(["schtasks", "/Create", "/TN", TASK_NAME,
+                       "/XML", xml_path, "/F"])
     finally:
         Path(xml_path).unlink(missing_ok=True)
     return result.returncode == 0
@@ -116,7 +122,8 @@ def _enable_startup_folder() -> bool:
         else:
             run_py = Path(__file__).resolve().parent.parent / "run.py"
             cmd = [sys.executable, str(run_py), "autosync"]
-        subprocess.Popen(cmd, creationflags=DETACHED_PROCESS, close_fds=True)
+        subprocess.Popen(cmd, creationflags=DETACHED_PROCESS | _NO_WINDOW,
+                         close_fds=True)
     except Exception:
         pass
     return True
@@ -128,7 +135,7 @@ def enable(interval_hours: int = 3) -> bool:
         print("Done - your files now sync automatically:")
         print(f"  - when you log in to Windows, then every {interval_hours} "
               "hours while the PC is on")
-        print("(A small console window appears briefly while it runs.)")
+        print("(It runs silently in the background - no window appears.)")
         return True
     # Task Scheduler can be locked down (e.g. managed laptops) - fall back
     # to a Startup script + background loop, which never needs rights.
@@ -144,10 +151,8 @@ def enable(interval_hours: int = 3) -> bool:
 
 def disable() -> bool:
     removed = False
-    result = subprocess.run(
-        ["schtasks", "/Delete", "/TN", TASK_NAME, "/F"],
-        capture_output=True, text=True)
-    removed |= result.returncode == 0
+    removed |= _run(["schtasks", "/Delete", "/TN", TASK_NAME,
+                     "/F"]).returncode == 0
     bat = _startup_bat()
     if bat.exists():
         bat.unlink()
