@@ -33,6 +33,12 @@ section_patterns:
 # Files from sections that match no week go here ("" = skip them)
 unmatched_folder: "_Other"
 
+# Assignment briefs + an assessments index go here ("" = disable)
+assignments_folder: "Assignments"
+
+# Auto-sync repeat interval in hours (used when auto-sync is turned on)
+sync_interval_hours: 3
+
 skip_extensions: []
 """
 

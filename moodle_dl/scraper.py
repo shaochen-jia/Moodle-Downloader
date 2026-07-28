@@ -9,6 +9,9 @@ from bs4 import BeautifulSoup
 # Activity types whose links point at downloadable content
 FILE_MODS = ("resource", "folder")
 
+# Assessment activity types (collected for the Assignments folder / index)
+ASSESS_MODS = ("assign", "quiz", "workshop", "lti")
+
 # pluginfile.php components that are site chrome, not course content
 _SKIP_COMPONENTS = re.compile(r"pluginfile\.php/\d+/(theme_|msttools_)")
 
@@ -73,7 +76,7 @@ def _activities_in(li, base_url: str) -> list[Activity]:
 
     for act_li in li.select("li.activity"):
         classes = act_li.get("class") or []
-        mod = next((m for m in FILE_MODS
+        mod = next((m for m in FILE_MODS + ASSESS_MODS
                     if m in classes or f"modtype_{m}" in classes), None)
         if mod is None:
             continue

@@ -47,7 +47,7 @@ A terminal window opens with the main menu:
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option:
@@ -174,21 +174,24 @@ Just log in in the window that opened; the sync continues by itself.
 
 ```
 Done - your files now sync automatically:
-  - every time you log in to Windows (1 minute after logon)
-  - plus a daily 09:00 run if the PC is already on
+  - when you log in to Windows, then every 3 hours while the PC is on
 (A small console window appears briefly while it runs.)
 ```
 
 On some university-managed laptops Windows blocks scheduled tasks; the tool
-detects this and falls back automatically, printing instead:
+detects this and falls back automatically to an invisible background loop,
+printing instead:
 
 ```
-Done - your files now sync automatically every time you log in to Windows.
+Done - your files now sync automatically:
+  - when you log in to Windows, then every 3 hours in the background
 ```
 
-Either way the result is the same for you: about a minute after you log in to
-Windows, a small console window opens, syncs, and closes itself. So even if
-you first turn on your PC at night, that day's new files still arrive.
+Either way the result is the same for you: it syncs shortly after you log in
+to Windows and then roughly every 3 hours while the PC is on — so files
+lecturers publish in the morning, afternoon or evening all arrive the same
+day, whenever you first turn your PC on. The interval can be changed via
+`sync_interval_hours` in `config.yaml`.
 
 Note: auto-sync remembers where the exe is. If you later **move** the exe,
 run option `4` then `3` again to re-register the new location.
@@ -214,7 +217,7 @@ folder path, `1,2,3,4`, then `1`, then `5`:
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option: 2
@@ -251,7 +254,7 @@ Setup complete! Settings saved to C:\Users\you\Desktop\MoodleDownloader\config.y
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option: 1
@@ -286,7 +289,7 @@ Done. 13 new file(s) downloaded.
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option: 5
@@ -329,6 +332,13 @@ macOS/Linux are expected to work but are not regularly tested.
   replaces a file, the new version is downloaded alongside the old one.
 - **Starred mode**: instead of a fixed course list, the tool can sync whatever
   courses you have starred on Moodle — handy at semester changeover.
+- **Assignments**: assignment briefs and rubrics (the files lecturers attach
+  to each assignment — never your own submissions) are downloaded into
+  `UNIT/Assignments/<assignment name>/`. An auto-generated
+  `Assignments/Assessments.txt` lists every assessment in the unit —
+  assignments with due dates, plus quizzes and external tools (which have no
+  downloadable files) with their links. Disable via `assignments_folder: ""`
+  in `config.yaml`.
 
 ## FAQ
 

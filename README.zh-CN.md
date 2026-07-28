@@ -44,7 +44,7 @@
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option:
@@ -168,22 +168,22 @@ TIP: tick 'Keep me signed in' on the Okta page so future runs skip MFA.
 
 ```
 Done - your files now sync automatically:
-  - every time you log in to Windows (1 minute after logon)
-  - plus a daily 09:00 run if the PC is already on
+  - when you log in to Windows, then every 3 hours while the PC is on
 (A small console window appears briefly while it runs.)
 ```
 
-意思是:**每次开机登录 Windows 后 1 分钟自动同步一次**,外加电脑开着时
-每天 9 点一次。有些学校/公司管控的电脑禁止注册计划任务,工具会自动改用
+意思是:**每次开机登录 Windows 后自动同步一次,之后电脑开着时每 3 小时
+再同步一次**——老师早上、中午、晚上发的文件当天都会到,无论你几点开机。
+有些学校/公司管控的电脑禁止注册计划任务,工具会自动改用隐形后台循环的
 备用方案,并显示:
 
 ```
-Done - your files now sync automatically every time you log in to Windows.
+Done - your files now sync automatically:
+  - when you log in to Windows, then every 3 hours in the background
 ```
 
-对你来说效果一样:登录 Windows 大约一分钟后,会有一个小终端窗口自己
-打开、同步、自己关闭。所以就算你今天晚上才第一次开电脑,当天的新文件
-照样会到。
+效果一样。同步间隔可以在 `config.yaml` 里通过 `sync_interval_hours`
+修改(默认 3 小时)。
 
 注意:自动同步记录的是 exe 当前的位置。以后如果**挪动了 exe**,进菜单
 按 `4` 再按 `3` 重新登记一次即可。
@@ -213,7 +213,7 @@ Auto-sync removed.
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option: 2
@@ -250,7 +250,7 @@ Setup complete! Settings saved to C:\Users\you\Desktop\MoodleDownloader\config.y
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option: 1
@@ -285,7 +285,7 @@ Done. 13 new file(s) downloaded.
 === Moodle Downloader ===
   [1] Sync course files now
   [2] First-time setup / change courses
-  [3] Turn ON auto-sync (runs at Windows login + daily)
+  [3] Turn ON auto-sync (at login, then every few hours)
   [4] Turn OFF auto-sync
   [5] Exit
 Choose an option: 5
@@ -325,6 +325,12 @@ Edge,无需下载浏览器;其他系统若既没有 Chrome 也没有 Playwright 
   老师替换了文件时,新版本会下载到旧版本旁边(不覆盖)。
 - **星标模式**:可以不固定课程列表,改为同步你在 Moodle 上加星标的课程
   ——换学期时只需在 Moodle 里改星标,工具自动跟随。
+- **作业抓取**:每个 assignment 页面上老师发的附件(题目、评分标准等,
+  **绝不包含你自己提交的文件**)会下载到
+  `UNIT/Assignments/作业名/`。同时自动生成 `Assignments/Assessments.txt`
+  清单,列出这门课的全部考核项——assignment 带截止日期;quiz 和外部平台
+  作业(没有可下载的文件)列出名字和链接。在 `config.yaml` 里把
+  `assignments_folder` 设为 `""` 可关闭。
 
 ## 常见问题
 

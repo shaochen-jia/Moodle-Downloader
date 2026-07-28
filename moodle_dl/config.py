@@ -25,6 +25,8 @@ class Config:
     skip_extensions: list[str]
     config_dir: Path
     course_selection: str = "manual"  # "manual" | "starred"
+    assignments_folder: str = "Assignments"  # "" disables assignment capture
+    sync_interval_hours: float = 3.0  # auto-sync repeat interval
 
     @property
     def weeks(self) -> range:
@@ -66,4 +68,6 @@ def load_config(path: str | Path) -> Config:
         skip_extensions=[e.lower() for e in raw.get("skip_extensions", []) or []],
         config_dir=path.parent,
         course_selection=str(raw.get("course_selection", "manual")),
+        assignments_folder=str(raw.get("assignments_folder", "Assignments")),
+        sync_interval_hours=float(raw.get("sync_interval_hours", 3)),
     )

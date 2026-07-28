@@ -46,7 +46,7 @@ def menu() -> int:
         print("=== Moodle Downloader ===")
         print("  [1] Sync course files now")
         print("  [2] First-time setup / change courses")
-        print("  [3] Turn ON auto-sync (runs at Windows login + daily)")
+        print("  [3] Turn ON auto-sync (at login, then every few hours)")
         print("  [4] Turn OFF auto-sync")
         print("  [5] Exit")
         try:
@@ -72,7 +72,14 @@ def menu() -> int:
                       "use cron on macOS/Linux.")
                 continue
             from moodle_dl.schedule_win import enable
-            enable()
+            hours = 3
+            if config_path.exists():
+                try:
+                    hours = max(1, round(load_config(config_path)
+                                         .sync_interval_hours))
+                except Exception:
+                    pass
+            enable(hours)
         elif choice == "4":
             if sys.platform != "win32":
                 continue
@@ -93,6 +100,52 @@ def _try_sync(cfg) -> None:
         print("Try again; if it keeps failing, report it on GitHub.")
 
 
+def _hide_console() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
+    except Exception:
+        pass
+
+
+def autosync_loop(config_path: Path) -> int:
+    """Background mode used on PCs where Task Scheduler is locked down:
+    started at logon, hides its console, then syncs every few hours until
+    the user turns auto-sync off (the loop notices within a minute)."""
+    import random
+    import time
+
+    from moodle_dl import lock
+    from moodle_dl.schedule_win import autosync_enabled
+
+    _hide_console()
+    if not lock.acquire("autosync"):
+        return 0  # another loop is already running
+    try:
+        while autosync_enabled():
+            interval_h = 3.0
+            try:
+                cfg = load_config(config_path)
+                interval_h = max(cfg.sync_interval_hours, 0.5)
+                sync(cfg)
+            except Exception:
+                pass  # network hiccup etc. - try again next round
+            # spread users out a little so everyone doesn't hit Moodle
+            # at the same instant
+            wake = time.monotonic() + interval_h * 3600 + random.uniform(-900, 900)
+            while time.monotonic() < wake:
+                if not autosync_enabled():
+                    return 0
+                time.sleep(60)
+    finally:
+        lock.release("autosync")
+    return 0
+
+
 def cli() -> int:
     if len(sys.argv) == 1:
         return menu()
@@ -105,6 +158,7 @@ def cli() -> int:
     sub.add_parser("setup", help="interactive first-time setup")
     sub.add_parser("menu", help="interactive menu")
     sub.add_parser("init", help="create the unit/week folder structure")
+    sub.add_parser("autosync", help="background loop used by auto-sync")
 
     p_sync = sub.add_parser("sync", help="download new files from Moodle")
     p_sync.add_argument("--headful", action="store_true",
@@ -119,6 +173,8 @@ def cli() -> int:
         return 0 if run_setup(config_path) else 1
     if args.cmd == "menu":
         return menu()
+    if args.cmd == "autosync":
+        return autosync_loop(config_path)
 
     cfg = _load_or_offer_setup(config_path)
     if cfg is None:

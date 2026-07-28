@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -8,6 +9,14 @@ from urllib.parse import unquote, urlparse
 from .config import Config
 
 _ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def _long(p: Path) -> Path:
+    """Windows extended-length form so paths beyond 260 chars still work."""
+    s = str(p)
+    if os.name == "nt" and not s.startswith("\\\\?\\") and len(s) > 240:
+        return Path("\\\\?\\" + s)
+    return p
 
 
 def sanitize(name: str) -> str:
@@ -47,7 +56,7 @@ class Manifest:
         if not entry:
             return False
         # If the file was deleted locally, download it again.
-        return Path(entry["path"]).exists()
+        return _long(Path(entry["path"])).exists()
 
     def add(self, url: str, path: Path, size: int) -> None:
         self.data[self.key(url)] = {"path": str(path), "size": size}
@@ -63,7 +72,7 @@ def unique_path(directory: Path, filename: str) -> Path:
     p = directory / filename
     stem, suffix = p.stem, p.suffix
     n = 1
-    while p.exists():
+    while _long(p).exists():
         p = directory / f"{stem} ({n}){suffix}"
         n += 1
     return p
@@ -76,9 +85,9 @@ def save_response(resp, directory: Path, cfg: Config,
     ext = Path(filename).suffix.lower()
     if cfg.skip_extensions and ext in cfg.skip_extensions:
         return None
-    directory.mkdir(parents=True, exist_ok=True)
+    _long(directory).mkdir(parents=True, exist_ok=True)
     body = resp.body()
     path = unique_path(directory, filename)
-    path.write_bytes(body)
+    _long(path).write_bytes(body)
     manifest.add(source_url, path, len(body))
     return path
