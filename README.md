@@ -1,4 +1,4 @@
-# Moodle Downloader
+﻿# Moodle Downloader
 
 English | [简体中文](README.zh-CN.md)
 
@@ -72,7 +72,7 @@ URL first.
 **Question 2 — where files should go:**
 
 ```
-Folder where course files should be saved [C:\Users\you\MoodleFiles]:
+Folder where course files should be saved [MoodleFiles, next to this app]:
 ```
 
 Type (or paste) the full path of any folder you like, e.g.
@@ -130,7 +130,7 @@ on Moodle yourself.
 ```
 Selected: FIT5163, FIT5234, FIT5136, FIT5003
 
-Setup complete! Settings saved to C:\...\config.yaml
+Setup complete! Settings saved to config.yaml next to the app.
 ```
 
 You are back at the menu.
@@ -138,15 +138,17 @@ You are back at the menu.
 ### Option [1] — Sync course files now
 
 ```
+Saving files to: C:\Users\you\Desktop\Uni 2026
+
 === FIT5003 (https://learning.monash.edu/course/view.php?id=4***8) ===
 
 === FIT5136 (https://learning.monash.edu/course/view.php?id=4***3) ===
   [Week 3] Wrap-up - 1 item(s)
-    + C:\Users\you\Uni 2026\FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
+    + FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
 
 === FIT5163 (https://learning.monash.edu/course/view.php?id=4***9) ===
   [Week 1] Real-time - 3 item(s)
-    + C:\Users\you\Uni 2026\FIT5163\Week 01\LN01_intro.pdf
+    + FIT5163\Week 01\LN01_intro.pdf
     ...
 
 Done. 10 new file(s) downloaded.
@@ -225,7 +227,7 @@ Choose an option: 2
 === Moodle Downloader - first-time setup ===
 
 Moodle address (press Enter if you are at Monash) [https://learning.monash.edu]:
-Folder where course files should be saved [C:\Users\you\MoodleFiles]: C:\Users\you\Desktop\Uni 2026
+Folder where course files should be saved [MoodleFiles, next to this app]: C:\Users\you\Desktop\Uni 2026
 
 Now fetching your course list from Moodle.
 If a browser window opens, log in with your university account
@@ -249,7 +251,7 @@ Which courses should be synced?
 
 Selected: FIT5163, FIT5234, FIT5136, FIT5003
 
-Setup complete! Settings saved to C:\Users\you\Desktop\MoodleDownloader\config.yaml
+Setup complete! Settings saved to config.yaml next to the app.
 
 === Moodle Downloader ===
   [1] Sync course files now
@@ -259,28 +261,30 @@ Setup complete! Settings saved to C:\Users\you\Desktop\MoodleDownloader\config.y
   [5] Exit
 Choose an option: 1
 
+Saving files to: C:\Users\you\Desktop\Uni 2026
+
 === FIT5163 (https://learning.monash.edu/course/view.php?id=00000) ===
   [Week 1] Own-time - 2 item(s)
-    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\Week 1  PollEv Questions and Answers.pdf
-    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\Essential Information for FIT Students.pdf
+    + FIT5163\Week 01\Week 1  PollEv Questions and Answers.pdf
+    + FIT5163\Week 01\Essential Information for FIT Students.pdf
   [Week 1] Real-time - 3 item(s)
-    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\LN01_intro.pdf
-    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\LN00_unitinfo.pdf
-    + C:\Users\you\Desktop\Uni 2026\FIT5163\Week 01\Applied 1.docx.pdf
+    + FIT5163\Week 01\LN01_intro.pdf
+    + FIT5163\Week 01\LN00_unitinfo.pdf
+    + FIT5163\Week 01\Applied 1.docx.pdf
 
 === FIT5234 (https://learning.monash.edu/course/view.php?id=00000) ===
   [Week 1] Real-time - 4 item(s)
-    + C:\Users\you\Desktop\Uni 2026\FIT5234\Week 01\FIT5234 Seminar 1 - Intra- and Inter-organizational BIS.pdf
+    + FIT5234\Week 01\FIT5234 Seminar 1 - Intra- and Inter-organizational BIS.pdf
     ...
   [Week 2] Real-time - 2 item(s)
-    + C:\Users\you\Desktop\Uni 2026\FIT5234\Week 02\FIT5234 Seminar - 2 Intra-organizational BIS.pdf
+    + FIT5234\Week 02\FIT5234 Seminar - 2 Intra-organizational BIS.pdf
     ...
 
 === FIT5136 (https://learning.monash.edu/course/view.php?id=00000) ===
   [Week 3] Wrap-up - 1 item(s)
-    + C:\Users\you\Desktop\Uni 2026\FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
+    + FIT5136\Week 03\use-case-satzinger-jackson-burd.pdf
   [Week 8] Wrap-up - 1 item(s)
-    + C:\Users\you\Desktop\Uni 2026\FIT5136\Week 08\Michael Quinn Ch 8.pdf
+    + FIT5136\Week 08\Michael Quinn Ch 8.pdf
 
 === FIT5003 (https://learning.monash.edu/course/view.php?id=00000) ===
 

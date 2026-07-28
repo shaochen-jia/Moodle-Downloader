@@ -167,7 +167,7 @@ def _sync_assessments(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 if resp.ok:
                     p = save_response(resp, dest, cfg, manifest, url)
                     if p:
-                        print(f"    + {p}")
+                        print(f"    + {_rel(cfg, p)}")
                         total_new += 1
         index_lines.append(f"[{act.mod}] {act.name}")
         if due:
@@ -181,6 +181,15 @@ def _sync_assessments(sess: MoodleSession, cfg: Config, manifest: Manifest,
     print(f"  [assessments] {len(kept)} item(s) indexed in "
           f"{cfg.assignments_folder}/Assessments.txt")
     return total_new
+
+
+def _rel(cfg: Config, path) -> str:
+    """Show paths relative to the download root - keeps usernames and
+    personal folder layouts out of shareable console output."""
+    try:
+        return str(Path(path).relative_to(cfg.root_dir))
+    except ValueError:
+        return str(path)
 
 
 def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
@@ -218,7 +227,7 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 print(f"    ! {act.name}: {e}")
                 continue
             for p in new:
-                print(f"    + {p}")
+                print(f"    + {_rel(cfg, p)}")
             total_new += len(new)
 
     try:
@@ -260,6 +269,7 @@ def _sync_locked(cfg: Config, headful: bool,
             print("No units to sync - check your config.yaml.")
             return
         init_folders(cfg, units)
+        print(f"Saving files to: {cfg.root_dir}")
 
         total = 0
         for unit in units:

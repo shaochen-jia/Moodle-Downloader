@@ -119,5 +119,5 @@ def run_setup(config_path: Path) -> Config | None:
         units_yaml=units_yaml,
     ), encoding="utf-8")
     print()
-    print(f"Setup complete! Settings saved to {config_path}")
+    print("Setup complete! Settings saved to config.yaml next to the app.")
     return load_config(config_path)
