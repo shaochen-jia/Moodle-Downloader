@@ -57,8 +57,10 @@ def run_setup(config_path: Path) -> Config | None:
     print()
     base_url = _ask("Moodle address (press Enter if you are at Monash)",
                     DEFAULT_URL).rstrip("/")
-    default_root = str(config_path.parent / "MoodleFiles")
-    root_dir = _ask("Folder where course files should be saved", default_root)
+    root_dir = _ask("Folder where course files should be saved",
+                    "MoodleFiles, next to this app")
+    if root_dir == "MoodleFiles, next to this app":
+        root_dir = str(config_path.parent / "MoodleFiles")
 
     print()
     print("Now fetching your course list from Moodle.")

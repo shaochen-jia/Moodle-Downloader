@@ -63,10 +63,16 @@ class MoodleSession:
         except Exception:
             pass
 
-    def _launch(self, headless: bool) -> None:
+    def _launch(self, headless: bool, offscreen: bool = False) -> None:
         if self.ctx:
             self.ctx.close()
         self.cfg.session_dir.mkdir(parents=True, exist_ok=True)
+        args = []
+        if offscreen:
+            # A real (headful) window, but parked far off-screen: Okta blocks
+            # true headless, yet usually renews the session here without any
+            # user action - so the user never sees a window unless needed.
+            args.append("--window-position=-32000,-32000")
         # Try the bundled Chromium first, then fall back to a system browser
         # (Edge ships with Windows; Chrome covers most other setups).
         last_err: Exception | None = None
@@ -76,6 +82,7 @@ class MoodleSession:
                     str(self.cfg.session_dir),
                     channel=channel,
                     headless=headless,
+                    args=args,
                     viewport={"width": 1280, "height": 900},
                     # Headless mode advertises "HeadlessChrome" in the UA,
                     # which SSO providers may treat as a bot - use a normal UA.
@@ -88,6 +95,30 @@ class MoodleSession:
             except Exception as e:
                 last_err = e
         raise RuntimeError(f"Could not launch any browser: {last_err}")
+
+    def _show_window(self, page: Page) -> None:
+        """Move an off-screen browser window into view for the user."""
+        try:
+            cdp = self.ctx.new_cdp_session(page)
+            win = cdp.send("Browser.getWindowForTarget")
+            cdp.send("Browser.setWindowBounds", {
+                "windowId": win["windowId"],
+                "bounds": {"left": 120, "top": 60,
+                           "width": 1150, "height": 850,
+                           "windowState": "normal"},
+            })
+            page.bring_to_front()
+        except Exception:
+            pass
+
+    def _needs_human(self, page: Page) -> bool:
+        """True if the page is showing a login form (username/password)."""
+        try:
+            sel = ('input[name="identifier"], input[type="password"], '
+                   'input[name="username"], input[type="email"]')
+            return page.locator(sel).count() > 0
+        except Exception:
+            return False
 
     def _is_logged_in(self, page: Page) -> bool:
         if not page.url.startswith(self.cfg.base_url):
@@ -129,12 +160,29 @@ class MoodleSession:
             return True
 
         if not self.headful:
-            # Session expired and we're headless: reopen visibly for login.
-            print("Session expired or first run - opening a browser window "
-                  "so you can log in (SSO + MFA)...", file=sys.stderr)
-            self._launch(headless=False)
+            # Session expired: retry with an invisible off-screen window
+            # (headless is blocked by Okta, but off-screen usually renews
+            # the session silently - the user sees nothing).
+            print("Renewing the Moodle session in the background...",
+                  file=sys.stderr)
+            self._launch(headless=False, offscreen=True)
             page = self.ctx.new_page()
             page.goto(dashboard, wait_until="domcontentloaded")
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                try:
+                    if self._is_logged_in(page):
+                        self._save_cookies()
+                        page.close()
+                        return True
+                    if self._needs_human(page):
+                        break  # a real login form - the user must act
+                    page.wait_for_timeout(2000)
+                except Exception:
+                    if page.is_closed():
+                        return False
+                    time.sleep(2)
+            self._show_window(page)
 
         print("Please log in to Moodle in the browser window "
               "(waiting up to 10 minutes)...", file=sys.stderr)

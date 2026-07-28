@@ -56,13 +56,16 @@ def menu() -> int:
         if choice == "1":
             cfg = _load_or_offer_setup(config_path)
             if cfg:
-                try:
-                    sync(cfg)
-                except Exception as e:
-                    print(f"\nSomething went wrong: {e}")
-                    print("Try again; if it keeps failing, report it on GitHub.")
+                _try_sync(cfg)
         elif choice == "2":
-            run_setup(config_path)
+            cfg = run_setup(config_path)
+            if cfg:
+                try:
+                    now = input("Sync your files right now? [Y/n]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    now = "n"
+                if now in ("", "y", "yes"):
+                    _try_sync(cfg)
         elif choice == "3":
             if sys.platform != "win32":
                 print("Auto-sync setup is Windows-only for now; "
@@ -77,6 +80,17 @@ def menu() -> int:
             disable()
         elif choice == "5":
             return 0
+        else:
+            print(f"'{choice}' is not an option - please enter a number "
+                  "from 1 to 5.")
+
+
+def _try_sync(cfg) -> None:
+    try:
+        sync(cfg)
+    except Exception as e:
+        print(f"\nSomething went wrong: {e}")
+        print("Try again; if it keeps failing, report it on GitHub.")
 
 
 def cli() -> int:
