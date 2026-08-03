@@ -100,13 +100,12 @@ def _activities_in(li, base_url: str) -> list[Activity]:
         name = name_el.get_text(" ", strip=True)
         out.append(Activity(name=name, url=url, mod=mod))
 
-    # Lecture recordings are usually plain links to an external host
-    for a in li.select("a[href]"):
-        href = a["href"]
-        if any(h in href for h in MEDIA_HOSTS) and href not in seen:
-            seen.add(href)
-            out.append(Activity(name=a.get_text(" ", strip=True) or "Recording",
-                                url=href, mod="media"))
+    # Recordings appear as links, as bare URLs in the text, and as embeds
+    for label, url in extract_media_urls(str(li)):
+        if url in seen:
+            continue
+        seen.add(url)
+        out.append(Activity(name=label, url=url, mod="media"))
 
     # Files linked or embedded directly in the section content (labels,
     # Monash "cms" content modules, ...)
@@ -146,6 +145,41 @@ def parse_section_page(html: str, base_url: str) -> list[SectionInfo]:
         if acts and not info.activities:
             info.activities = acts
     return infos and list(infos.values()) or []
+
+
+_BARE_MEDIA = re.compile(
+    r"https?://(?:www\.)?(?:youtube\.com/watch\?[^\s\"'<>]+|youtu\.be/[\w-]+|"
+    r"[\w.-]*panopto\.com/Panopto/Pages/(?:Viewer|Embed)\.aspx\?[^\s\"'<>]+|"
+    r"echo360[\w.]*/[^\s\"'<>]+)", re.I)
+
+
+def extract_media_urls(html: str) -> list[tuple[str, str]]:
+    """Recording links, however they appear.
+
+    Staff embed lectures three different ways - as a link, as a bare URL
+    typed into the page text, and as an iframe - so all three are scanned.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def add(label: str, url: str) -> None:
+        url = url.replace("&amp;", "&").strip()
+        key = url.split("&instance=")[0]
+        if key in seen:
+            return
+        seen.add(key)
+        out.append((label.strip() or "Recording", url))
+
+    for a in soup.select("a[href]"):
+        if any(h in a["href"] for h in MEDIA_HOSTS):
+            add(a.get_text(" ", strip=True), a["href"])
+    for frame in soup.select("iframe[src]"):
+        if any(h in frame["src"] for h in MEDIA_HOSTS):
+            add(frame.get("title", "") or "Embedded recording", frame["src"])
+    for m in _BARE_MEDIA.finditer(soup.get_text(" ", strip=True)):
+        add("Supplementary video", m.group(0))
+    return out
 
 
 def extract_pluginfile_links(html: str, base_url: str) -> list[tuple[str, str]]:

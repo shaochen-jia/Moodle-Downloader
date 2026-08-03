@@ -22,7 +22,7 @@ import urllib.request
 
 from .config import Config
 
-TIMEOUT_S = 120
+TIMEOUT_S = 300  # free tiers can be slow on a full lecture transcript
 
 # Sensible defaults so a user only has to supply a key
 PRESETS = {

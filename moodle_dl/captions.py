@@ -138,6 +138,20 @@ class PanoptoClient:
         return None
 
 
+def youtube_title(video_id: str) -> str | None:
+    """The video's real title, so several videos in one week do not all end
+    up sharing a filename."""
+    import json
+    import urllib.request
+    url = ("https://www.youtube.com/oembed?format=json&url="
+           f"https://www.youtube.com/watch%3Fv%3D{video_id}")
+    try:
+        with urllib.request.urlopen(url, timeout=20) as r:
+            return json.loads(r.read().decode("utf-8")).get("title")
+    except Exception:
+        return None
+
+
 def youtube_transcript(video_id: str) -> str | None:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi

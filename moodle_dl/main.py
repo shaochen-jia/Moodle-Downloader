@@ -10,8 +10,8 @@ from .downloader import Manifest, sanitize, save_response
 from .folders import init_folders, unit_dir, week_dir
 from . import notes
 from .scraper import (ASSESS_MODS, LINK_MODS, Activity, SectionInfo,
-                      extract_pluginfile_links, find_section_links,
-                      match_week, parse_section_page)
+                      extract_media_urls, extract_pluginfile_links,
+                      find_section_links, match_week, parse_section_page)
 from .session import LoginRequired, MoodleSession
 
 # Only files the lecturer attached to the assignment brief - never the
@@ -222,7 +222,14 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
         if links:
             wk = week_of(infos, n, cfg)
             if wk is not None:
-                week_links.setdefault(wk, []).extend((a.name, a.url) for a in links)
+                collected = []
+                for a in links:
+                    collected.append((a.name, a.url))
+                    # A "page" is often just a wrapper around an embedded
+                    # lecture recording - open it and take what is inside.
+                    if a.mod == "page":
+                        collected += _open_page(sess, a)
+                week_links.setdefault(wk, []).extend(collected)
         if not files:
             continue
         week = week_of(infos, n, cfg)
@@ -268,6 +275,18 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
     return total_new
 
 
+def _open_page(sess: MoodleSession, act: Activity) -> list[tuple[str, str]]:
+    """Recordings embedded inside a Moodle page activity."""
+    try:
+        html = sess.get_html(act.url)
+    except Exception:
+        return []
+    found = extract_media_urls(html)
+    # Name them after the page, which is what the student actually sees.
+    return [(act.name if len(found) == 1 else f"{act.name} — {label}", url)
+            for label, url in found]
+
+
 def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                       unit: Unit,
                       week_links: dict[int, list[tuple[str, str]]]) -> int:
@@ -297,7 +316,8 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 text = captions.youtube_transcript(vid)
                 if not text:
                     continue
-                title, source = label or f"YouTube {vid}", "YouTube"
+                source = "YouTube"
+                title = captions.youtube_title(vid) or f"{label} ({vid})"
             summary = ""
             if summariser and summariser.enabled:
                 try:
