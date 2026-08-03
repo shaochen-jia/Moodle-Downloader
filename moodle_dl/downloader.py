@@ -87,6 +87,20 @@ def save_response(resp, directory: Path, cfg: Config,
         return None
     _long(directory).mkdir(parents=True, exist_ok=True)
     body = resp.body()
+
+    # If this exact file is already on disk, adopt it instead of writing a
+    # second copy. Without this, a lost or damaged manifest would refill the
+    # folders with "name (1).pdf" duplicates.
+    target = directory / filename
+    if _long(target).exists():
+        try:
+            if _long(target).stat().st_size == len(body) \
+                    and _long(target).read_bytes() == body:
+                manifest.add(source_url, target, len(body))
+                return None
+        except OSError:
+            pass
+
     path = unique_path(directory, filename)
     _long(path).write_bytes(body)
     manifest.add(source_url, path, len(body))

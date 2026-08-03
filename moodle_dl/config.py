@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import dataclasses
 import os
@@ -11,7 +11,6 @@ import yaml
 class Unit:
     code: str
     course_id: int
-    ed_course_id: int | None = None  # optional Ed (edstem.org) course
 
 
 @dataclasses.dataclass
@@ -50,9 +49,7 @@ def load_config(path: str | Path) -> Config:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
-    units = [Unit(code=str(u["code"]), course_id=int(u["course_id"]),
-                  ed_course_id=(int(u["ed_course_id"])
-                                if u.get("ed_course_id") else None))
+    units = [Unit(code=str(u["code"]), course_id=int(u["course_id"]))
              for u in raw.get("units", [])]
 
     root_dir = Path(str(raw.get("root_dir", "./MoodleFiles")))
@@ -74,3 +71,4 @@ def load_config(path: str | Path) -> Config:
         assignments_folder=str(raw.get("assignments_folder", "Assignments")),
         sync_interval_hours=float(raw.get("sync_interval_hours", 3)),
     )
+

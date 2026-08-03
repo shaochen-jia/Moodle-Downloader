@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import ed, history, lock
+from . import history, lock
 from .config import Config, Unit
 from .notify import notify
 from .downloader import Manifest, sanitize, save_response
@@ -193,45 +193,6 @@ def _rel(cfg: Config, path) -> str:
         return str(path)
 
 
-def sync_ed(sess: MoodleSession, cfg: Config, manifest: Manifest,
-            unit: Unit, client: "ed.EdClient | None" = None) -> int:
-    """Save Ed lesson content as Markdown in the matching week folder."""
-    if not unit.ed_course_id:
-        return 0
-    print(f"  [Ed] course {unit.ed_course_id}")
-    if client is None or not client.token:
-        client = ed.EdClient(sess)
-        if not client.sign_in(unit.ed_course_id):
-            print("    ! Could not sign in to Ed - skipping.")
-            return 0
-
-    new = 0
-    for lesson in client.lessons(unit.ed_course_id):
-        week = match_week(lesson.title, cfg.section_patterns, cfg.weeks)
-        if week is not None:
-            dest = week_dir(cfg, unit.code, week)
-        elif cfg.unmatched_folder:
-            dest = unit_dir(cfg, unit.code) / cfg.unmatched_folder
-        else:
-            continue
-        try:
-            slides = client.slides(lesson.id)
-        except Exception as e:
-            print(f"    ! {lesson.title}: {e}")
-            continue
-        key = ed.lesson_key(lesson, slides)
-        if manifest.has(key):
-            continue
-        def fetch(url: str) -> bytes | None:
-            resp = sess.get_raw(url)
-            return resp.body() if resp.ok else None
-
-        path = ed.save_lesson(lesson, slides, dest, fetch=fetch)
-        if path:
-            manifest.add(key, path, path.stat().st_size)
-            print(f"    + {_rel(cfg, path)}")
-            new += 1
-    return new
 
 
 def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
@@ -276,11 +237,6 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
         total_new += _sync_assessments(sess, cfg, manifest, unit, assessments)
     except Exception as e:
         print(f"  ! assessments: {e}")
-
-    try:
-        total_new += sync_ed(sess, cfg, manifest, unit)
-    except Exception as e:
-        print(f"  ! Ed: {e}")
     return total_new
 
 

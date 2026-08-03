@@ -17,9 +17,6 @@ course_selection: manual
 units:
   - code: FIT1045
     course_id: 12345   # from https://learning.monash.edu/course/view.php?id=12345
-    # Optional: if the unit also uses Ed, its lesson content is saved as
-    # Markdown in the same week folders.
-    # ed_course_id: 37748   # from https://edstem.org/au/courses/37748/lessons
 
 # Regexes matching a section title to a week ({week} = week number)
 section_patterns:
