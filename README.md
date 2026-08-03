@@ -4,15 +4,20 @@ English | [简体中文](README.zh-CN.md)
 
 Keeps every lecture slide, tutorial sheet and assignment brief published on
 your (Monash) Moodle filed into weekly folders — by itself, all semester.
-Late-released files like tutorial solutions are picked up automatically on the
-next sync, and nothing is ever downloaded twice.
+Lecture recordings are turned into readable transcripts, so a week's material
+is text you can search, skim or paste into a chatbot. Late-released files like
+tutorial solutions are picked up automatically on the next sync, and nothing is
+ever downloaded twice.
 
 ```
 Your folder/
 ├── FIT5003/
-│   ├── Week 00 ... Week 12/   <- files land in the right week
-│   ├── Assignments/           <- briefs, rubrics + an assessment index
-│   └── _Other/                <- files that belong to no week
+│   ├── Week 00 ... Week 12/
+│   │   ├── lecture slides, worksheets, solutions ...
+│   │   ├── Week 02 Summary.md      <- what happened this week
+│   │   └── Transcripts/            <- lecture recordings as text
+│   ├── Assignments/                <- briefs, rubrics + an assessment index
+│   └── _Other/                     <- files that belong to no week
 └── FIT5136/
     └── ...
 ```
@@ -56,9 +61,12 @@ account. Session cookies stay in `%LOCALAPPDATA%\moodle-downloader`.
   copy) listing that week's files, its lecture recordings and links, and the
   assessments coming up next. It is rewritten on every sync, so keep your own
   notes in a different file.
-- **Transcripts** — recordings themselves are rarely downloadable, but their
-  captions are. Panopto (one extra single sign-on) and YouTube recordings are
-  saved as readable transcripts in `Week NN/Transcripts/`.
+- **Transcripts** — no video is ever downloaded; only its captions. Panopto
+  (one extra single sign-on) and YouTube recordings become readable
+  transcripts in `Week NN/Transcripts/`. Recordings are found however staff
+  published them: as links, as bare URLs typed into the page, and as videos
+  embedded inside a page activity. Anything without captions — including Zoom
+  cloud recordings — is named in the week note instead, so you know it exists.
 - **AI summaries (optional)** — with an API key in `config.yaml`, each
   transcript also gets a Summary section. Any of Gemini (free tier), Claude,
   OpenAI, DeepSeek, Kimi, GLM, Qwen or a local Ollama model works; with no key
