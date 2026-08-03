@@ -52,6 +52,10 @@ account. Session cookies stay in `%LOCALAPPDATA%\moodle-downloader`.
 - **Assignments** — briefs and rubrics attached by staff (never your own
   submissions) go to `UNIT/Assignments/<name>/`, alongside an auto-generated
   `Assessments.txt` listing every assessment with due dates and links.
+- **Ed lessons** — units that also use Ed (edstem.org) can sync their lesson
+  content too: each lesson becomes one Markdown file in the matching week
+  folder, images included, so it reads offline. Add `ed_course_id` to the unit
+  in `config.yaml` to enable it.
 
 ## Settings
 

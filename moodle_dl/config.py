@@ -11,6 +11,7 @@ import yaml
 class Unit:
     code: str
     course_id: int
+    ed_course_id: int | None = None  # optional Ed (edstem.org) course
 
 
 @dataclasses.dataclass
@@ -49,7 +50,9 @@ def load_config(path: str | Path) -> Config:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
-    units = [Unit(code=str(u["code"]), course_id=int(u["course_id"]))
+    units = [Unit(code=str(u["code"]), course_id=int(u["course_id"]),
+                  ed_course_id=(int(u["ed_course_id"])
+                                if u.get("ed_course_id") else None))
              for u in raw.get("units", [])]
 
     root_dir = Path(str(raw.get("root_dir", "./MoodleFiles")))

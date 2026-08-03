@@ -49,6 +49,9 @@
 - **作业**:老师上传的题目和评分标准(绝不包含你自己提交的文件)保存到
   `UNIT/Assignments/作业名/`,同时生成 `Assessments.txt`,列出全部考核项、
   截止时间和链接。
+- **Ed 课件**:如果这门课还用 Ed(edstem.org),课件内容也能一起同步:
+  每节 lesson 生成一个 Markdown 文件放进对应周文件夹,图片一并下载到本地,
+  离线可读。在 `config.yaml` 的对应 unit 下加 `ed_course_id` 即可开启。
 
 ## 设置项
 
