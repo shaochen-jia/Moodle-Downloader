@@ -7,8 +7,17 @@ import time
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
 from .config import Config
+from .notify import notify
 
 LOGIN_TIMEOUT_S = 10 * 60  # give the user 10 minutes to complete SSO + MFA
+
+# Session cookies older than this are assumed dead server-side; restoring them
+# would only overwrite a fresher session held in the browser profile.
+SESSION_COOKIE_MAX_AGE_H = 12
+
+
+class LoginRequired(RuntimeError):
+    """Raised when a sync could not proceed because nobody logged in."""
 
 
 class MoodleSession:
@@ -29,7 +38,7 @@ class MoodleSession:
         self._pw = sync_playwright().start()
         self._launch(headless=not self.headful)
         if not self._ensure_logged_in():
-            raise RuntimeError("Could not log in to Moodle.")
+            raise LoginRequired("Sign-in is needed before files can sync.")
         return self
 
     def __exit__(self, *exc) -> None:
@@ -51,17 +60,38 @@ class MoodleSession:
         try:
             cookies = self.ctx.cookies()
             self._cookie_file.write_text(json.dumps(cookies), encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Could not save the login session: {e}", file=sys.stderr)
 
     def _restore_cookies(self) -> None:
+        """Re-inject saved cookies, but never overwrite a live session with a
+        stale one.
+
+        Session cookies (no expiry) are what actually keep Moodle and the SSO
+        provider logged in, and they die server-side within a day or so.
+        Restoring a days-old snapshot on top of the browser profile would
+        replace whatever fresh session the profile still holds - which stops
+        the session ever rolling forward. So old session cookies are dropped,
+        and expired ones are never restored at all.
+        """
         if not self._cookie_file.exists():
             return
         try:
+            age_h = (time.time() - self._cookie_file.stat().st_mtime) / 3600
             cookies = json.loads(self._cookie_file.read_text(encoding="utf-8"))
-            self.ctx.add_cookies(cookies)
-        except Exception:
-            pass
+            now = time.time()
+            keep = []
+            for c in cookies:
+                expires = c.get("expires", -1)
+                if expires and expires > 0:
+                    if expires > now:
+                        keep.append(c)      # long-lived: device trust, prefs
+                elif age_h <= SESSION_COOKIE_MAX_AGE_H:
+                    keep.append(c)          # session cookie, still plausible
+            if keep:
+                self.ctx.add_cookies(keep)
+        except Exception as e:
+            print(f"Could not restore the saved session: {e}", file=sys.stderr)
 
     def _launch(self, headless: bool, offscreen: bool = False) -> None:
         if self.ctx:
@@ -183,6 +213,9 @@ class MoodleSession:
                         return False
                     time.sleep(2)
             self._show_window(page)
+            notify("Moodle Downloader needs you to sign in",
+                   "Your university session expired. Sign in in the browser "
+                   "window that just opened - syncing continues by itself.")
 
         print("Please log in to Moodle in the browser window "
               "(waiting up to 10 minutes)...", file=sys.stderr)
@@ -198,6 +231,10 @@ class MoodleSession:
         return ok
 
     # -- public API --------------------------------------------------------
+
+    def refresh_saved_session(self) -> None:
+        """Snapshot the (now freshly used) session for the next run."""
+        self._save_cookies()
 
     def get_html(self, url: str) -> str:
         resp = self.ctx.request.get(url)

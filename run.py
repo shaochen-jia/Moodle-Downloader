@@ -121,6 +121,7 @@ def autosync_loop(config_path: Path) -> int:
 
     from moodle_dl import lock
     from moodle_dl.schedule_win import autosync_enabled
+    from moodle_dl.session import LoginRequired
 
     _hide_console()
     if not lock.acquire("autosync"):
@@ -132,6 +133,10 @@ def autosync_loop(config_path: Path) -> int:
                 cfg = load_config(config_path)
                 interval_h = max(cfg.sync_interval_hours, 0.5)
                 sync(cfg)
+            except LoginRequired:
+                # Nobody was at the keyboard to sign in - check back soon
+                # rather than sitting idle for the full interval.
+                interval_h = min(interval_h, 0.5)
             except Exception:
                 pass  # network hiccup etc. - try again next round
             # spread users out a little so everyone doesn't hit Moodle

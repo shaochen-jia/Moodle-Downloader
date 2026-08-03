@@ -274,4 +274,7 @@ def _sync_locked(cfg: Config, headful: bool,
         total = 0
         for unit in units:
             total += sync_unit(sess, cfg, manifest, unit)
+        # Refresh the stored session after real work, so the next run starts
+        # from a session that is minutes old rather than days old.
+        sess.refresh_saved_session()
     print(f"\nDone. {total} new file(s) downloaded.")
