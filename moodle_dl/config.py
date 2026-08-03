@@ -29,6 +29,11 @@ class Config:
     sync_interval_hours: float = 3.0  # auto-sync repeat interval
     weekly_notes: bool = True  # write a Week NN Summary note per week
     transcripts: bool = True  # save captions of lecture recordings
+    # Optional AI summaries - everything works without these
+    ai_provider: str = ""     # gemini | anthropic | openai | deepseek | ...
+    ai_api_key: str = ""
+    ai_model: str = ""        # blank uses the provider's default
+    ai_base_url: str = ""     # blank uses the provider's default
 
     @property
     def weeks(self) -> range:
@@ -74,5 +79,9 @@ def load_config(path: str | Path) -> Config:
         sync_interval_hours=float(raw.get("sync_interval_hours", 3)),
         weekly_notes=bool(raw.get("weekly_notes", True)),
         transcripts=bool(raw.get("transcripts", True)),
+        ai_provider=str(raw.get("ai_provider", "") or ""),
+        ai_api_key=str(raw.get("ai_api_key", "") or ""),
+        ai_model=str(raw.get("ai_model", "") or ""),
+        ai_base_url=str(raw.get("ai_base_url", "") or ""),
     )
 

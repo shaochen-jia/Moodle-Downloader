@@ -56,6 +56,13 @@ account. Session cookies stay in `%LOCALAPPDATA%\moodle-downloader`.
   copy) listing that week's files, its lecture recordings and links, and the
   assessments coming up next. It is rewritten on every sync, so keep your own
   notes in a different file.
+- **Transcripts** — recordings themselves are rarely downloadable, but their
+  captions are. Panopto (one extra single sign-on) and YouTube recordings are
+  saved as readable transcripts in `Week NN/Transcripts/`.
+- **AI summaries (optional)** — with an API key in `config.yaml`, each
+  transcript also gets a Summary section. Any of Gemini (free tier), Claude,
+  OpenAI, DeepSeek, Kimi, GLM, Qwen or a local Ollama model works; with no key
+  the feature simply doesn't appear.
 
 ## Settings
 
@@ -69,6 +76,8 @@ Most people never need this, but `config.yaml` (next to the app) exposes:
 | `section_patterns` | Regexes matching a section title to a week, e.g. add `"module\\s*0*{week}\\b"` |
 | `assignments_folder` | Set to `""` to skip assignments entirely |
 | `weekly_notes` | `false` turns off the weekly summary notes |
+| `transcripts` | `false` turns off caption downloads |
+| `ai_provider` / `ai_api_key` | Optional AI summaries — see `config.example.yaml` for the provider list |
 
 ## Developers / macOS / Linux
 

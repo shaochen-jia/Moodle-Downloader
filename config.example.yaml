@@ -29,3 +29,25 @@ unmatched_folder: "_Other"
 skip_extensions: []
 # Weekly summary note per week folder (Markdown + Word). false to disable.
 weekly_notes: true
+
+# Save captions of lecture recordings (Panopto, YouTube) as transcripts.
+transcripts: true
+
+# ── Optional AI summaries ────────────────────────────────────────────────
+# Everything above works without this. Add a key and each transcript also
+# gets a Summary section. Pick ONE provider:
+#
+#   gemini     free tier - get a key at aistudio.google.com/apikey
+#   anthropic  Claude    - console.anthropic.com
+#   openai     GPT       - platform.openai.com
+#   deepseek   very cheap, OpenAI-compatible
+#   moonshot   Kimi
+#   zhipu      GLM (free flash model)
+#   qwen       Alibaba Qwen
+#   ollama     runs locally, no key and no cost
+#
+# ai_model and ai_base_url are optional - each provider has a default.
+ai_provider: ""
+ai_api_key: ""
+ai_model: ""
+ai_base_url: ""

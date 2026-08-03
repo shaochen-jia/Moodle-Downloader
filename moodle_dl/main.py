@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import captions, history, lock
+from . import ai, captions, history, lock
 from .config import Config, Unit
 from .notify import notify
 from .downloader import Manifest, sanitize, save_response
@@ -273,6 +273,7 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                       week_links: dict[int, list[tuple[str, str]]]) -> int:
     """Save captions for the week's recordings as readable transcripts."""
     panopto: captions.PanoptoClient | None = None
+    summariser = ai.Summariser(cfg)
     new = 0
     for week, links in sorted(week_links.items()):
         dest = week_dir(cfg, unit.code, week)
@@ -297,7 +298,14 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 if not text:
                     continue
                 title, source = label or f"YouTube {vid}", "YouTube"
-            path = captions.save_transcript(dest, title, source, url, text)
+            summary = ""
+            if summariser and summariser.enabled:
+                try:
+                    summary = summariser.summarise(title, text)
+                except ai.AIError as e:
+                    print(f"    ! summary for {title}: {e}")
+            path = captions.save_transcript(dest, title, source, url, text,
+                                            summary)
             manifest.add(key, path, path.stat().st_size)
             print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
             new += 1

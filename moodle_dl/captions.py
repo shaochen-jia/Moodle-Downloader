@@ -152,12 +152,15 @@ def youtube_transcript(video_id: str) -> str | None:
 
 
 def save_transcript(dest: Path, title: str, source: str, url: str,
-                    text: str) -> Path:
+                    text: str, summary: str = "") -> Path:
     folder = dest / TRANSCRIPT_DIR
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{sanitize(title)}.md"
     header = (f"# {title}\n\n"
               f"*Transcript from {source} — [original recording]({url})*\n\n"
               f"---\n\n")
+    if summary:
+        header += (f"## Summary\n\n{summary}\n\n---\n\n"
+                   f"## Full transcript\n\n")
     path.write_text(header + text + "\n", encoding="utf-8")
     return path
