@@ -141,6 +141,20 @@ class MoodleSession:
         except Exception:
             pass
 
+    def _hide_window(self, page: Page) -> None:
+        """Park the browser window off-screen once no human input is needed."""
+        try:
+            cdp = self.ctx.new_cdp_session(page)
+            win = cdp.send("Browser.getWindowForTarget")
+            cdp.send("Browser.setWindowBounds", {
+                "windowId": win["windowId"],
+                "bounds": {"left": -32000, "top": -32000,
+                           "width": 1150, "height": 850,
+                           "windowState": "normal"},
+            })
+        except Exception:
+            pass
+
     def _needs_human(self, page: Page) -> bool:
         """True if the page is showing a login form (username/password)."""
         try:
@@ -227,7 +241,13 @@ class MoodleSession:
         if ok:
             self._save_cookies()
             if not page.is_closed():
+                # Get the window out of the way again: the rest of the sync
+                # needs no supervision, and leaving an empty browser on screen
+                # makes it look like something is stuck.
+                self._hide_window(page)
                 page.close()
+            notify("Signed in - syncing now",
+                   "You can ignore the browser window; it closes by itself.")
         return ok
 
     # -- public API --------------------------------------------------------

@@ -132,7 +132,7 @@ def autosync_loop(config_path: Path) -> int:
             try:
                 cfg = load_config(config_path)
                 interval_h = max(cfg.sync_interval_hours, 0.5)
-                sync(cfg)
+                sync(cfg, background=True)
             except LoginRequired:
                 # Nobody was at the keyboard to sign in - check back soon
                 # rather than sitting idle for the full interval.

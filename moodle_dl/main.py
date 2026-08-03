@@ -3,14 +3,15 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import lock
+from . import history, lock
 from .config import Config, Unit
+from .notify import notify
 from .downloader import Manifest, sanitize, save_response
 from .folders import init_folders, unit_dir, week_dir
 from .scraper import (ASSESS_MODS, Activity, SectionInfo,
                       extract_pluginfile_links, find_section_links,
                       match_week, parse_section_page)
-from .session import MoodleSession
+from .session import LoginRequired, MoodleSession
 
 # Only files the lecturer attached to the assignment brief - never the
 # student's own submissions or marker feedback.
@@ -238,18 +239,31 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
 
 
 def sync(cfg: Config, headful: bool = False,
-         only_units: list[str] | None = None) -> None:
+         only_units: list[str] | None = None,
+         background: bool = False) -> None:
+    """Run one sync. `background` adds a desktop notification on new files,
+    since an unattended run has no console for the user to read."""
     if not lock.acquire("sync"):
         print("Another sync is already running - skipping this one.")
         return
     try:
-        _sync_locked(cfg, headful, only_units)
+        new_files = _sync_locked(cfg, headful, only_units)
+        history.record("ok", new_files)
+        if background and new_files:
+            notify(f"{new_files} new file{'s' if new_files != 1 else ''} "
+                   "downloaded", f"Saved under {cfg.root_dir.name}.")
+    except LoginRequired as e:
+        history.record("login-needed", detail=str(e))
+        raise
+    except Exception as e:
+        history.record("error", detail=f"{type(e).__name__}: {e}")
+        raise
     finally:
         lock.release("sync")
 
 
 def _sync_locked(cfg: Config, headful: bool,
-                 only_units: list[str] | None) -> None:
+                 only_units: list[str] | None) -> int:
     manifest = Manifest(cfg.manifest_path)
 
     with MoodleSession(cfg, headful=headful) as sess:
@@ -267,7 +281,7 @@ def _sync_locked(cfg: Config, headful: bool,
             units = [u for u in units if u.code.upper() in wanted]
         if not units:
             print("No units to sync - check your config.yaml.")
-            return
+            return 0
         init_folders(cfg, units)
         print(f"Saving files to: {cfg.root_dir}")
 
@@ -278,3 +292,4 @@ def _sync_locked(cfg: Config, headful: bool,
         # from a session that is minutes old rather than days old.
         sess.refresh_saved_session()
     print(f"\nDone. {total} new file(s) downloaded.")
+    return total

@@ -20,7 +20,7 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from . import __version__, theme as t
+from . import __version__, history, theme as t
 from .config import Config, load_config
 from .courses import Course, fetch_courses
 from .main import sync
@@ -204,6 +204,7 @@ class App(ctk.CTk):
             text_color=t.TEXT_SECONDARY, border_width=0,
             corner_radius=t.RADIUS_CTL, wrap="none")
         self.log_box.pack(fill="both", expand=True, padx=18, pady=(0, 16))
+        self._show_recent_runs()
 
         _rule(card)
         foot = ctk.CTkFrame(card, fg_color="transparent")
@@ -249,7 +250,29 @@ class App(ctk.CTk):
         except OSError:
             return 0
 
+    def _show_recent_runs(self) -> None:
+        """Background syncs have no console - replay their outcome here."""
+        runs = history.load()[-8:]
+        if not runs:
+            return
+        self._append_raw("Recent automatic syncs")
+        for r in runs:
+            self._append_raw("  " + history.describe(r))
+        self._append_raw("")
+
+    def _append_raw(self, line: str) -> None:
+        if self.log_box is None or not self.log_box.winfo_exists():
+            return
+        self.log_box.configure(state="normal")
+        self.log_box.insert("end", line + "\n")
+        self.log_box.see("end")
+        self.log_box.configure(state="disabled")
+
     def _last_sync_text(self, cfg: Config) -> str:
+        run = history.last()
+        if run:
+            return "Last sync: " + history.describe(run).split("— ", 1)[-1] \
+                   + time.strftime(" (%a %H:%M)", time.localtime(run["at"]))
         try:
             ts = cfg.manifest_path.stat().st_mtime
             return "Last synced " + time.strftime("%a %H:%M", time.localtime(ts))
