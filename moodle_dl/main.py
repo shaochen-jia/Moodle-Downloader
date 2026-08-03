@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import history, lock
+from . import captions, history, lock
 from .config import Config, Unit
 from .notify import notify
 from .downloader import Manifest, sanitize, save_response
@@ -252,6 +252,12 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
     except Exception as e:
         print(f"  ! assessments: {e}")
 
+    if cfg.transcripts:
+        try:
+            total_new += _sync_transcripts(sess, cfg, manifest, unit, week_links)
+        except Exception as e:
+            print(f"  ! transcripts: {e}")
+
     if cfg.weekly_notes:
         try:
             written = _write_week_notes(cfg, unit, week_links, found)
@@ -260,6 +266,42 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
         except Exception as e:
             print(f"  ! weekly notes: {e}")
     return total_new
+
+
+def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
+                      unit: Unit,
+                      week_links: dict[int, list[tuple[str, str]]]) -> int:
+    """Save captions for the week's recordings as readable transcripts."""
+    panopto: captions.PanoptoClient | None = None
+    new = 0
+    for week, links in sorted(week_links.items()):
+        dest = week_dir(cfg, unit.code, week)
+        for label, url in links:
+            ids = captions.panopto_ids(url)
+            vid = captions.youtube_id(url) if not ids else None
+            if not ids and not vid:
+                continue
+            key = f"transcript:{ids[1] if ids else vid}"
+            if manifest.has(key):
+                continue
+            if ids:
+                if panopto is None:
+                    panopto = captions.PanoptoClient(sess)
+                got = panopto.transcript(*ids)
+                if not got:
+                    continue
+                title, text = got
+                source = "Panopto"
+            else:
+                text = captions.youtube_transcript(vid)
+                if not text:
+                    continue
+                title, source = label or f"YouTube {vid}", "YouTube"
+            path = captions.save_transcript(dest, title, source, url, text)
+            manifest.add(key, path, path.stat().st_size)
+            print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
+            new += 1
+    return new
 
 
 def _write_week_notes(cfg: Config, unit: Unit,
