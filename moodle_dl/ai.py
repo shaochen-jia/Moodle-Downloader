@@ -27,7 +27,9 @@ TIMEOUT_S = 120
 # Sensible defaults so a user only has to supply a key
 PRESETS = {
     "gemini": {
-        "model": "gemini-2.0-flash",
+        # The "-latest" aliases are the ones the free tier actually serves;
+        # pinned versions often answer 404 or 429 on a free key.
+        "model": "gemini-flash-lite-latest",
         "base_url": "https://generativelanguage.googleapis.com/v1beta",
         "note": "Free tier available at aistudio.google.com/apikey",
     },

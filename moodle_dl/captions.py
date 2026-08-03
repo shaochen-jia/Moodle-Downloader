@@ -151,6 +151,37 @@ def youtube_transcript(video_id: str) -> str | None:
         return None  # no captions, age-gated, or region blocked
 
 
+SUMMARY_HEADING = "## Summary"
+
+
+def transcripts_without_summary(week_folder: Path) -> list[Path]:
+    """Existing transcripts that predate the AI being switched on."""
+    folder = week_folder / TRANSCRIPT_DIR
+    if not folder.exists():
+        return []
+    out = []
+    for p in sorted(folder.glob("*.md")):
+        try:
+            if SUMMARY_HEADING not in p.read_text(encoding="utf-8"):
+                out.append(p)
+        except OSError:
+            continue
+    return out
+
+
+def add_summary(path: Path, summary: str) -> None:
+    """Insert a summary into an existing transcript, above the body."""
+    text = path.read_text(encoding="utf-8")
+    marker = "---\n\n"
+    head, sep, body = text.partition(marker)
+    if not sep:
+        head, body = "", text
+        sep = ""
+    path.write_text(
+        f"{head}{sep}{SUMMARY_HEADING}\n\n{summary}\n\n---\n\n"
+        f"## Full transcript\n\n{body}", encoding="utf-8")
+
+
 def save_transcript(dest: Path, title: str, source: str, url: str,
                     text: str, summary: str = "") -> Path:
     folder = dest / TRANSCRIPT_DIR

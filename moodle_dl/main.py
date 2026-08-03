@@ -309,6 +309,21 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
             manifest.add(key, path, path.stat().st_size)
             print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
             new += 1
+
+    # Transcripts saved before the AI was configured still deserve a summary.
+    if summariser.enabled:
+        for week in cfg.weeks:
+            for path in captions.transcripts_without_summary(
+                    week_dir(cfg, unit.code, week)):
+                try:
+                    body = path.read_text(encoding="utf-8")
+                    summary = summariser.summarise(path.stem, body)
+                except (OSError, ai.AIError) as e:
+                    print(f"    ! summary for {path.stem}: {e}")
+                    continue
+                if summary:
+                    captions.add_summary(path, summary)
+                    print(f"    ~ summary added to {_rel(cfg, path)}")
     return new
 
 
