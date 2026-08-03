@@ -52,6 +52,10 @@ account. Session cookies stay in `%LOCALAPPDATA%\moodle-downloader`.
 - **Assignments** — briefs and rubrics attached by staff (never your own
   submissions) go to `UNIT/Assignments/<name>/`, alongside an auto-generated
   `Assessments.txt` listing every assessment with due dates and links.
+- **Weekly notes** — each week folder gets a `Week NN Summary.md` (and a Word
+  copy) listing that week's files, its lecture recordings and links, and the
+  assessments coming up next. It is rewritten on every sync, so keep your own
+  notes in a different file.
 
 ## Settings
 
@@ -64,6 +68,7 @@ Most people never need this, but `config.yaml` (next to the app) exposes:
 | `sync_interval_hours` | Auto-sync interval, default `3` |
 | `section_patterns` | Regexes matching a section title to a week, e.g. add `"module\\s*0*{week}\\b"` |
 | `assignments_folder` | Set to `""` to skip assignments entirely |
+| `weekly_notes` | `false` turns off the weekly summary notes |
 
 ## Developers / macOS / Linux
 

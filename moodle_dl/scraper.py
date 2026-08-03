@@ -12,6 +12,13 @@ FILE_MODS = ("resource", "folder")
 # Assessment activity types (collected for the Assignments folder / index)
 ASSESS_MODS = ("assign", "quiz", "workshop", "lti")
 
+# Link-only activities: nothing to download, but worth listing in the notes
+LINK_MODS = ("url", "page")
+
+# Hosts whose links are lecture recordings rather than ordinary web pages
+MEDIA_HOSTS = ("panopto.com", "echo360", "zoom.us", "youtube.com", "youtu.be",
+               "vimeo.com", "web.microsoftstream.com")
+
 # pluginfile.php components that are site chrome, not course content
 _SKIP_COMPONENTS = re.compile(r"pluginfile\.php/\d+/(theme_|msttools_)")
 
@@ -76,7 +83,7 @@ def _activities_in(li, base_url: str) -> list[Activity]:
 
     for act_li in li.select("li.activity"):
         classes = act_li.get("class") or []
-        mod = next((m for m in FILE_MODS + ASSESS_MODS
+        mod = next((m for m in FILE_MODS + ASSESS_MODS + LINK_MODS
                     if m in classes or f"modtype_{m}" in classes), None)
         if mod is None:
             continue
@@ -92,6 +99,14 @@ def _activities_in(li, base_url: str) -> list[Activity]:
             hidden.extract()
         name = name_el.get_text(" ", strip=True)
         out.append(Activity(name=name, url=url, mod=mod))
+
+    # Lecture recordings are usually plain links to an external host
+    for a in li.select("a[href]"):
+        href = a["href"]
+        if any(h in href for h in MEDIA_HOSTS) and href not in seen:
+            seen.add(href)
+            out.append(Activity(name=a.get_text(" ", strip=True) or "Recording",
+                                url=href, mod="media"))
 
     # Files linked or embedded directly in the section content (labels,
     # Monash "cms" content modules, ...)

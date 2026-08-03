@@ -27,6 +27,7 @@ class Config:
     course_selection: str = "manual"  # "manual" | "starred"
     assignments_folder: str = "Assignments"  # "" disables assignment capture
     sync_interval_hours: float = 3.0  # auto-sync repeat interval
+    weekly_notes: bool = True  # write a Week NN Summary note per week
 
     @property
     def weeks(self) -> range:
@@ -70,5 +71,6 @@ def load_config(path: str | Path) -> Config:
         course_selection=str(raw.get("course_selection", "manual")),
         assignments_folder=str(raw.get("assignments_folder", "Assignments")),
         sync_interval_hours=float(raw.get("sync_interval_hours", 3)),
+        weekly_notes=bool(raw.get("weekly_notes", True)),
     )
 

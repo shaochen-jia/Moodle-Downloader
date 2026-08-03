@@ -8,7 +8,8 @@ from .config import Config, Unit
 from .notify import notify
 from .downloader import Manifest, sanitize, save_response
 from .folders import init_folders, unit_dir, week_dir
-from .scraper import (ASSESS_MODS, Activity, SectionInfo,
+from . import notes
+from .scraper import (ASSESS_MODS, LINK_MODS, Activity, SectionInfo,
                       extract_pluginfile_links, find_section_links,
                       match_week, parse_section_page)
 from .session import LoginRequired, MoodleSession
@@ -124,7 +125,8 @@ def _download_activity(sess: MoodleSession, cfg: Config, manifest: Manifest,
 
 def _sync_assessments(sess: MoodleSession, cfg: Config, manifest: Manifest,
                       unit: Unit,
-                      assessments: list[tuple[Activity, str]]) -> int:
+                      assessments: list[tuple[Activity, str]],
+                      collected: list[notes.Assessment] | None = None) -> int:
     """Download assignment briefs and write an index of all assessments."""
     if not cfg.assignments_folder or not assessments:
         return 0
@@ -175,6 +177,9 @@ def _sync_assessments(sess: MoodleSession, cfg: Config, manifest: Manifest,
             index_lines.append(f"    Due: {due}")
         index_lines.append(f"    {act.url}")
         index_lines.append("")
+        if collected is not None:
+            collected.append(notes.Assessment(name=act.name, due=due,
+                                              url=act.url, mod=act.mod))
 
     assign_root.mkdir(parents=True, exist_ok=True)
     (assign_root / "Assessments.txt").write_text(
@@ -206,11 +211,18 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
 
     total_new = 0
     assessments: list[tuple[Activity, str]] = []
+    week_links: dict[int, list[tuple[str, str]]] = {}
     for n in sorted(infos):
         info = infos[n]
-        files = [a for a in info.activities if a.mod not in ASSESS_MODS]
+        files = [a for a in info.activities
+                 if a.mod not in ASSESS_MODS + LINK_MODS + ("media",)]
         assessments += [(a, info.title) for a in info.activities
                         if a.mod in ASSESS_MODS]
+        links = [a for a in info.activities if a.mod in LINK_MODS + ("media",)]
+        if links:
+            wk = week_of(infos, n, cfg)
+            if wk is not None:
+                week_links.setdefault(wk, []).extend((a.name, a.url) for a in links)
         if not files:
             continue
         week = week_of(infos, n, cfg)
@@ -233,11 +245,39 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 print(f"    + {_rel(cfg, p)}")
             total_new += len(new)
 
+    found: list[notes.Assessment] = []
     try:
-        total_new += _sync_assessments(sess, cfg, manifest, unit, assessments)
+        total_new += _sync_assessments(sess, cfg, manifest, unit, assessments,
+                                       found)
     except Exception as e:
         print(f"  ! assessments: {e}")
+
+    if cfg.weekly_notes:
+        try:
+            written = _write_week_notes(cfg, unit, week_links, found)
+            for p in written:
+                print(f"    ~ {_rel(cfg, p)}")
+        except Exception as e:
+            print(f"  ! weekly notes: {e}")
     return total_new
+
+
+def _write_week_notes(cfg: Config, unit: Unit,
+                      week_links: dict[int, list[tuple[str, str]]],
+                      assessments: list[notes.Assessment]) -> list[Path]:
+    """Refresh the per-week summary note for every week that has content."""
+    written = []
+    for week in cfg.weeks:
+        note = notes.WeekNote(
+            unit=unit.code, week=week,
+            folder=week_dir(cfg, unit.code, week),
+            links=week_links.get(week, []),
+            assessments=assessments,
+        )
+        path = notes.write_note(cfg, note)
+        if path:
+            written.append(path)
+    return written
 
 
 def sync(cfg: Config, headful: bool = False,

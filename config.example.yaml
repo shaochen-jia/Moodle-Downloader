@@ -27,3 +27,5 @@ section_patterns:
 unmatched_folder: "_Other"
 
 skip_extensions: []
+# Weekly summary note per week folder (Markdown + Word). false to disable.
+weekly_notes: true
