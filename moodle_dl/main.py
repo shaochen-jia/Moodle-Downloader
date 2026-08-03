@@ -259,15 +259,18 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
     except Exception as e:
         print(f"  ! assessments: {e}")
 
+    no_captions: dict[int, list[tuple[str, str]]] = {}
     if cfg.transcripts:
         try:
-            total_new += _sync_transcripts(sess, cfg, manifest, unit, week_links)
+            total_new += _sync_transcripts(sess, cfg, manifest, unit,
+                                           week_links, no_captions)
         except Exception as e:
             print(f"  ! transcripts: {e}")
 
     if cfg.weekly_notes:
         try:
-            written = _write_week_notes(cfg, unit, week_links, found)
+            written = _write_week_notes(cfg, unit, week_links, found,
+                                        no_captions)
             for p in written:
                 print(f"    ~ {_rel(cfg, p)}")
         except Exception as e:
@@ -289,8 +292,13 @@ def _open_page(sess: MoodleSession, act: Activity) -> list[tuple[str, str]]:
 
 def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                       unit: Unit,
-                      week_links: dict[int, list[tuple[str, str]]]) -> int:
-    """Save captions for the week's recordings as readable transcripts."""
+                      week_links: dict[int, list[tuple[str, str]]],
+                      no_captions: dict[int, list[tuple[str, str]]]) -> int:
+    """Save captions for the week's recordings as readable transcripts.
+
+    Recordings that turn out to have no captions are reported back so the
+    week note can still name them.
+    """
     panopto: captions.PanoptoClient | None = None
     summariser = ai.Summariser(cfg)
     new = 0
@@ -309,12 +317,14 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                     panopto = captions.PanoptoClient(sess)
                 got = panopto.transcript(*ids)
                 if not got:
+                    no_captions.setdefault(week, []).append((label, url))
                     continue
                 title, text = got
                 source = "Panopto"
             else:
                 text = captions.youtube_transcript(vid)
                 if not text:
+                    no_captions.setdefault(week, []).append((label, url))
                     continue
                 source = "YouTube"
                 title = captions.youtube_title(vid) or f"{label} ({vid})"
@@ -349,7 +359,9 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
 
 def _write_week_notes(cfg: Config, unit: Unit,
                       week_links: dict[int, list[tuple[str, str]]],
-                      assessments: list[notes.Assessment]) -> list[Path]:
+                      assessments: list[notes.Assessment],
+                      no_captions: dict[int, list[tuple[str, str]]] | None = None
+                      ) -> list[Path]:
     """Refresh the per-week summary note for every week that has content."""
     written = []
     for week in cfg.weeks:
@@ -358,6 +370,7 @@ def _write_week_notes(cfg: Config, unit: Unit,
             folder=week_dir(cfg, unit.code, week),
             links=week_links.get(week, []),
             assessments=assessments,
+            no_captions=(no_captions or {}).get(week, []),
         )
         path = notes.write_note(cfg, note)
         if path:

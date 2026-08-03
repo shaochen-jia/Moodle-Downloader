@@ -55,6 +55,9 @@ class WeekNote:
     folder: Path
     links: list[tuple[str, str]] = dataclasses.field(default_factory=list)
     assessments: list[Assessment] = dataclasses.field(default_factory=list)
+    # Recordings that exist but carry no captions - worth naming, because
+    # otherwise they vanish from the week without trace.
+    no_captions: list[tuple[str, str]] = dataclasses.field(default_factory=list)
 
 
 def _describe(path: Path) -> str:
@@ -101,6 +104,14 @@ def build_markdown(note: WeekNote) -> str:
     if note.links:
         lines += ["## Recordings and links", ""]
         for label, url in note.links:
+            lines.append(f"- [{label or url}]({url})")
+        lines.append("")
+
+    if note.no_captions:
+        lines += ["## Recordings you have to watch yourself", "",
+                  "*No captions were published for these, so there is no "
+                  "transcript to read.*", ""]
+        for label, url in note.no_captions:
             lines.append(f"- [{label or url}]({url})")
         lines.append("")
 
@@ -161,6 +172,12 @@ def _write_docx(note: WeekNote, path: Path, files: list[Path]) -> None:
             doc.add_heading("Recordings and links", level=2)
             for label, url in note.links:
                 doc.add_paragraph(f"{label or 'Link'} — {url}", style="List Bullet")
+
+        if note.no_captions:
+            doc.add_heading("Recordings you have to watch yourself", level=2)
+            for label, url in note.no_captions:
+                doc.add_paragraph(f"{label or 'Recording'} — {url}",
+                                  style="List Bullet")
 
         soon = _upcoming(note.assessments)
         if soon:
