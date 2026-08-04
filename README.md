@@ -2,8 +2,11 @@
 
 English | [简体中文](README.zh-CN.md)
 
+**Built for Monash University students.** It is written against Monash's
+Moodle, Panopto and single sign-on; other institutions are out of scope.
+
 Keeps every lecture slide, tutorial sheet and assignment brief published on
-your (Monash) Moodle filed into weekly folders — by itself, all semester.
+Moodle filed into weekly folders — by itself, all semester.
 Lecture recordings are turned into readable transcripts, so a week's material
 is text you can search, skim or paste into a chatbot. Late-released files like
 tutorial solutions are picked up automatically on the next sync, and nothing is
