@@ -33,11 +33,25 @@ section_patterns:
 # Files from sections that match no week go here ("" = skip them)
 unmatched_folder: "_Other"
 
+# Optional AI summaries of lecture transcripts. Leave ai_provider empty to
+# keep everything offline. Providers: gemini (free tier), anthropic, openai,
+# deepseek, moonshot, zhipu, qwen, ollama (local, no key).
+ai_provider: "{ai_provider}"
+ai_api_key: "{ai_api_key}"
+ai_model: ""
+ai_base_url: ""
+
 # Assignment briefs + an assessments index go here ("" = disable)
 assignments_folder: "Assignments"
 
 # Auto-sync repeat interval in hours (used when auto-sync is turned on)
-sync_interval_hours: 3
+sync_interval_hours: {sync_interval_hours}
+
+# Weekly summary note per week folder (Markdown + Word)
+weekly_notes: {weekly_notes}
+
+# Save captions of lecture recordings as transcripts
+transcripts: {transcripts}
 
 skip_extensions: []
 """
@@ -53,7 +67,11 @@ def _temp_config(base_url: str, config_path: Path) -> Config:
 
 
 def write_config(config_path: Path, base_url: str, root_dir: str,
-                 course_selection: str, picked: list[Course]) -> Config:
+                 course_selection: str, picked: list[Course],
+                 ai_provider: str = "", ai_api_key: str = "",
+                 sync_interval_hours: float = 3,
+                 weekly_notes: bool = True,
+                 transcripts: bool = True) -> Config:
     """Write config.yaml - shared by the CLI wizard and the GUI."""
     if course_selection == "starred":
         units_yaml = "  []  # resolved from your starred courses at each run\n"
@@ -65,6 +83,11 @@ def write_config(config_path: Path, base_url: str, root_dir: str,
         root_dir=root_dir.replace("\\", "/"),
         course_selection=course_selection,
         units_yaml=units_yaml,
+        ai_provider=ai_provider.strip(),
+        ai_api_key=ai_api_key.strip().replace('"', ""),
+        sync_interval_hours=f"{sync_interval_hours:g}",
+        weekly_notes=str(bool(weekly_notes)).lower(),
+        transcripts=str(bool(transcripts)).lower(),
     ), encoding="utf-8")
     return load_config(config_path)
 
@@ -126,8 +149,19 @@ def run_setup(config_path: Path) -> Config | None:
         print()
         print("Selected: " + ", ".join(c.unit_code for c in picked))
 
+    # Re-running setup must not silently reset settings made elsewhere.
+    keep = {}
+    if config_path.exists():
+        try:
+            old = load_config(config_path)
+            keep = dict(ai_provider=old.ai_provider, ai_api_key=old.ai_api_key,
+                        sync_interval_hours=old.sync_interval_hours,
+                        weekly_notes=old.weekly_notes,
+                        transcripts=old.transcripts)
+        except Exception:
+            pass
     cfg = write_config(config_path, base_url, root_dir,
-                       course_selection, picked)
+                       course_selection, picked, **keep)
     print()
     print("Setup complete! Settings saved to config.yaml next to the app.")
     return cfg

@@ -16,6 +16,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from moodle_dl.config import default_config_path as config_path_for
 from moodle_dl.config import load_config
 from moodle_dl.folders import init_folders
 from moodle_dl.main import sync
@@ -29,7 +30,8 @@ def app_dir() -> Path:
 
 
 def default_config_path() -> Path:
-    return app_dir() / "config.yaml"
+    """Shared by the app and a source checkout, so settings never fork."""
+    return config_path_for(app_dir())
 
 
 def _load_or_offer_setup(config_path: Path):

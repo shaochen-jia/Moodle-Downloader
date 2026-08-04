@@ -411,12 +411,111 @@ class App(ctk.CTk):
             text_color=t.TEXT_SECONDARY, checkbox_width=18, checkbox_height=18,
             corner_radius=4, border_width=1, border_color=t.BORDER_STRONG,
             fg_color=t.ACCENT, hover_color=t.ACCENT_HOVER,
-            checkmark_color=t.ON_ACCENT).pack(anchor="w", pady=12)
+            checkmark_color=t.ON_ACCENT).pack(anchor="w", pady=(12, 6))
+
+        self._build_ai_row(page)
 
         self.finish_btn = _primary(page, "Finish and run first sync",
                                    self._finish)
         self.finish_btn.configure(state="disabled")
         self.finish_btn.pack(fill="x")
+
+    INTERVALS = {"1 hour": 1, "3 hours": 3, "6 hours": 6, "12 hours": 12,
+                 "24 hours": 24}
+
+    @classmethod
+    def _interval_label(cls, hours) -> str:
+        try:
+            h = round(float(hours))
+        except (TypeError, ValueError):
+            h = 3
+        for label, value in cls.INTERVALS.items():
+            if value == h:
+                return label
+        return "3 hours"
+
+    # Label shown in the dropdown -> value stored in the config
+    AI_CHOICES = {
+        "Off — nothing is sent anywhere": "",
+        "Google Gemini (free tier)": "gemini",
+        "Claude (Anthropic)": "anthropic",
+        "OpenAI": "openai",
+        "DeepSeek": "deepseek",
+        "Kimi (Moonshot)": "moonshot",
+        "GLM (Zhipu)": "zhipu",
+        "Qwen (Alibaba)": "qwen",
+        "Ollama — runs locally, no key": "ollama",
+    }
+
+    def _build_ai_row(self, page) -> None:
+        """AI settings belong in the window, not in a text file the user is
+        expected to find and edit."""
+        box = _card(page)
+        box.pack(fill="x", pady=(0, 10))
+        inner = ctk.CTkFrame(box, fg_color="transparent")
+        inner.pack(fill="x", padx=16, pady=12)
+
+        freq = ctk.CTkFrame(inner, fg_color="transparent")
+        freq.pack(fill="x", pady=(0, 10))
+        _label(freq, "Check for new files every", size=12,
+               color=t.TEXT_SECONDARY).pack(side="left")
+        self.interval_var = ctk.StringVar(
+            value=self._interval_label(self._current("sync_interval_hours", "3")))
+        ctk.CTkOptionMenu(
+            freq, values=list(self.INTERVALS), variable=self.interval_var,
+            width=110, height=30, corner_radius=t.RADIUS_CTL, font=_font(12),
+            fg_color=t.SUBTLE, button_color=t.SUBTLE,
+            button_hover_color=t.GHOST_HOVER, text_color=t.TEXT,
+            dropdown_fg_color=t.CARD, dropdown_text_color=t.TEXT,
+            dropdown_hover_color=t.GHOST_HOVER,
+            dropdown_font=_font(12)).pack(side="left", padx=8)
+        _label(freq, "while auto-sync is on", size=12,
+               color=t.TEXT_MUTED).pack(side="left")
+
+        _label(inner, "Summarise lecture transcripts with AI (optional)",
+               size=12, color=t.TEXT_SECONDARY, anchor="w").pack(fill="x")
+
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(6, 0))
+
+        current = self._current("ai_provider", "")
+        label_for = {v: k for k, v in self.AI_CHOICES.items()}
+        self.ai_var = ctk.StringVar(
+            value=label_for.get(current, list(self.AI_CHOICES)[0]))
+        ctk.CTkOptionMenu(
+            row, values=list(self.AI_CHOICES), variable=self.ai_var,
+            command=lambda _: self._ai_hint(), width=210, height=34,
+            corner_radius=t.RADIUS_CTL, font=_font(12),
+            fg_color=t.SUBTLE, button_color=t.SUBTLE,
+            button_hover_color=t.GHOST_HOVER, text_color=t.TEXT,
+            dropdown_fg_color=t.CARD, dropdown_text_color=t.TEXT,
+            dropdown_hover_color=t.GHOST_HOVER,
+            dropdown_font=_font(12)).pack(side="left")
+
+        self.ai_key = ctk.CTkEntry(
+            row, height=34, corner_radius=t.RADIUS_CTL, font=_font(12),
+            fg_color=t.SUBTLE, border_color=t.BORDER, text_color=t.TEXT,
+            placeholder_text="API key", show="•")
+        key = self._current("ai_api_key", "")
+        if key:
+            self.ai_key.insert(0, key)
+        self.ai_key.pack(side="left", expand=True, fill="x", padx=(8, 0))
+
+        self.ai_note = _label(inner, "", size=11, color=t.TEXT_MUTED,
+                              anchor="w", wraplength=560, justify="left")
+        self.ai_note.pack(fill="x", pady=(6, 0))
+        self._ai_hint()
+
+    def _ai_hint(self) -> None:
+        from .ai import PRESETS
+        provider = self.AI_CHOICES.get(self.ai_var.get(), "")
+        if not provider:
+            text = ("Leave this off and no course content ever leaves your "
+                    "computer.")
+        else:
+            note = PRESETS.get(provider, {}).get("note", "")
+            text = f"{note}  Your key is stored only in this app's folder."
+        self.ai_note.configure(text=text)
 
     def _current(self, attr: str, default: str) -> str:
         try:
@@ -505,7 +604,19 @@ class App(ctk.CTk):
                                  "star option.", t.DANGER)
                 return
             selection = "manual"
-        write_config(self.config_path, base_url, root_dir, selection, picked)
+        keep = {}
+        try:
+            old = load_config(self.config_path)
+            keep = dict(weekly_notes=old.weekly_notes,
+                        transcripts=old.transcripts)
+        except Exception:
+            pass
+        write_config(self.config_path, base_url, root_dir, selection, picked,
+                     ai_provider=self.AI_CHOICES.get(self.ai_var.get(), ""),
+                     ai_api_key=self.ai_key.get(),
+                     sync_interval_hours=self.INTERVALS.get(
+                         self.interval_var.get(), 3),
+                     **keep)
         self._build_dashboard()
         self._append_log("Settings saved - starting your first sync")
         self._start_sync()

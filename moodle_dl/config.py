@@ -2,9 +2,33 @@
 
 import dataclasses
 import os
+import shutil
 from pathlib import Path
 
 import yaml
+
+
+def settings_dir() -> Path:
+    """One place for settings, whatever started the app.
+
+    Keeping config.yaml beside the executable meant the packaged app and a
+    source checkout each had their own copy, which silently drifted apart -
+    and moving the exe lost every setting. Both now read the same file.
+    """
+    base = Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local"))
+    d = base / "moodle-downloader"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def default_config_path(app_dir: Path | None = None) -> Path:
+    """The settings file, migrating an older beside-the-app one if found."""
+    path = settings_dir() / "config.yaml"
+    if not path.exists() and app_dir:
+        legacy = app_dir / "config.yaml"
+        if legacy.exists():
+            shutil.copy2(legacy, path)
+    return path
 
 
 @dataclasses.dataclass

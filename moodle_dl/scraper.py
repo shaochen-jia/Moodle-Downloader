@@ -165,11 +165,19 @@ def extract_media_urls(html: str) -> list[tuple[str, str]]:
 
     def add(label: str, url: str) -> None:
         url = url.replace("&amp;", "&").strip()
+        # Staff sometimes paste the passcode into the link itself. Everything
+        # after the first space is not part of the address - keep it as a
+        # note on the label so the passcode is not lost.
+        extra = ""
+        if any(c.isspace() for c in url):
+            url, _, tail = url.partition(" ")
+            extra = " ".join(tail.split())
         key = url.split("&instance=")[0]
         if key in seen:
             return
         seen.add(key)
-        out.append((label.strip() or "Recording", url))
+        name = label.strip() or "Recording"
+        out.append((f"{name} — {extra}" if extra else name, url))
 
     for a in soup.select("a[href]"):
         if any(h in a["href"] for h in MEDIA_HOSTS):
