@@ -70,14 +70,17 @@ account. Session cookies stay in `%LOCALAPPDATA%\moodle-downloader`.
   published them: as links, as bare URLs typed into the page, and as videos
   embedded inside a page activity. Anything without captions — including Zoom
   cloud recordings — is named in the week note instead, so you know it exists.
-- **AI summaries (optional)** — with an API key in `config.yaml`, each
-  transcript also gets a Summary section. Any of Gemini (free tier), Claude,
-  OpenAI, DeepSeek, Kimi, GLM, Qwen or a local Ollama model works; with no key
-  the feature simply doesn't appear.
+- **AI summaries (optional)** — pick a provider and paste a key in the setup
+  screen and each transcript also gets a Summary section. Gemini (free tier),
+  Claude, OpenAI, DeepSeek, Kimi, GLM, Qwen or a local Ollama all work. Left
+  off, nothing is sent anywhere and the feature simply doesn't appear.
 
 ## Settings
 
-Most people never need this, but `config.yaml` (next to the app) exposes:
+Courses, download folder, sync interval and the AI provider are all set in
+the app window. Everything else lives in `config.yaml`, kept once per user at
+`%LOCALAPPDATA%\moodle-downloader\` — so replacing or moving the app never
+loses your settings:
 
 | Key | Meaning |
 | --- | --- |
