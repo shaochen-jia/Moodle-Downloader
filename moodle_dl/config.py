@@ -53,6 +53,9 @@ class Config:
     sync_interval_hours: float = 3.0  # auto-sync repeat interval
     weekly_notes: bool = True  # write a Week NN Summary note per week
     transcripts: bool = True  # save captions of lecture recordings
+    download_videos: bool = False  # keep the video files themselves
+    transcribe_media: bool = True  # let the AI read recordings with no captions
+    max_transcribe_mb: int = 300  # skip recordings larger than this
     # Optional AI summaries - everything works without these
     ai_provider: str = ""     # gemini | anthropic | openai | deepseek | ...
     ai_api_key: str = ""
@@ -103,6 +106,9 @@ def load_config(path: str | Path) -> Config:
         sync_interval_hours=float(raw.get("sync_interval_hours", 3)),
         weekly_notes=bool(raw.get("weekly_notes", True)),
         transcripts=bool(raw.get("transcripts", True)),
+        download_videos=bool(raw.get("download_videos", False)),
+        transcribe_media=bool(raw.get("transcribe_media", True)),
+        max_transcribe_mb=int(raw.get("max_transcribe_mb", 300)),
         ai_provider=str(raw.get("ai_provider", "") or ""),
         ai_api_key=str(raw.get("ai_api_key", "") or ""),
         ai_model=str(raw.get("ai_model", "") or ""),

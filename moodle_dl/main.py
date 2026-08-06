@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import ai, captions, history, lock
+from . import ai, captions, history, lock, structure
+from .courses import get_sesskey
 from .config import Config, Unit
 from .notify import notify
 from .downloader import Manifest, sanitize, save_response
@@ -21,10 +22,12 @@ _DUE_RE = re.compile(r"<strong>\s*Due:\s*</strong>\s*([^<]+)")
 
 MAX_SECTIONS = 120     # safety cap on crawled section numbers
 SEED_SECTIONS = 8      # always try section 0..7 even if not linked anywhere
+MAX_FOLLOW_DEPTH = 2   # how far to chase a video through wrapper pages
 
 
-def crawl_sections(sess: MoodleSession, cfg: Config,
-                   unit: Unit) -> dict[int, SectionInfo]:
+def crawl_sections(sess: MoodleSession, cfg: Config, unit: Unit,
+                   pending: dict[int, list[str]] | None = None
+                   ) -> dict[int, SectionInfo]:
     """Fetch the course page and every section page, following subsection
     links, and merge what we learn about each section."""
     course_url = f"{cfg.base_url}/course/view.php?id={unit.course_id}"
@@ -54,7 +57,61 @@ def crawl_sections(sess: MoodleSession, cfg: Config,
         queue |= {k for k in find_section_links(page, unit.course_id)
                   if k not in visited and k <= MAX_SECTIONS}
         merge(parse_section_page(page, cfg.base_url), own_number=n)
+
+    _add_missing_from_course_map(sess, cfg, unit, infos, pending)
     return infos
+
+
+# Activity types worth opening or downloading, by Moodle plugin name
+_WANTED_MODS = {"resource": "resource", "folder": "folder", "page": "page",
+                "url": "url", "book": "page", "lesson": "page"}
+
+
+def _add_missing_from_course_map(sess: MoodleSession, cfg: Config, unit: Unit,
+                                 infos: dict[int, SectionInfo],
+                                 pending: dict[int, list[str]] | None = None
+                                 ) -> None:
+    """Fill in activities the rendered page never showed.
+
+    An activity that is not open yet is drawn as plain text with no link, so
+    parsing the markup cannot see it. Moodle's own structure call still lists
+    it, which is how we learn that it exists at all.
+    """
+    try:
+        sesskey = get_sesskey(sess, cfg.base_url)
+        cmap = structure.fetch_course_map(sess, cfg.base_url, sesskey,
+                                          unit.course_id)
+    except Exception:
+        cmap = None
+    if not cmap:
+        return
+
+    seen: set[str] = set()
+    for info in infos.values():
+        for act in info.activities:
+            m = re.search(r"view\.php\?id=(\d+)", act.url)
+            if m:
+                seen.add(m.group(1))
+
+    added = 0
+    for sec in cmap.sections.values():
+        if sec.number < 0 or sec.number not in infos:
+            continue
+        for mod in cmap.modules_in(sec):
+            kind = _WANTED_MODS.get(mod.modname)
+            if not kind or not mod.url or mod.id in seen:
+                continue
+            if not mod.user_visible:
+                # It exists but is not open yet - a release date, usually.
+                # Worth naming so the week note can say it is coming.
+                if pending is not None:
+                    pending.setdefault(sec.number, []).append(mod.name)
+                continue
+            infos[sec.number].activities.append(
+                Activity(name=mod.name, url=mod.url, mod=kind))
+            added += 1
+    if added:
+        print(f"  [structure] {added} item(s) found via Moodle's course map")
 
 
 def week_of(infos: dict[int, SectionInfo], number: int, cfg: Config) -> int | None:
@@ -74,13 +131,27 @@ def week_of(infos: dict[int, SectionInfo], number: int, cfg: Config) -> int | No
 
 
 def _download_activity(sess: MoodleSession, cfg: Config, manifest: Manifest,
-                       act: Activity, dest: Path) -> list[str]:
-    """Download one activity into dest. Returns list of new file paths."""
+                       act: Activity, dest: Path,
+                       videos: list[tuple[str, str]] | None = None) -> list[str]:
+    """Download one activity into dest. Returns list of new file paths.
+
+    Recordings are not downloaded; their addresses are collected instead so
+    the transcript step can turn them into text.
+    """
     new: list[str] = []
+
+    def is_recording(url: str, name: str = "") -> bool:
+        if cfg.download_videos:
+            return False
+        return captions.is_video_file(url) or captions.is_video_file(name)
 
     if act.mod == "folder":
         html = sess.get_html(act.url)
-        for _, url in extract_pluginfile_links(html, cfg.base_url):
+        for name, url in extract_pluginfile_links(html, cfg.base_url):
+            if is_recording(url, name):
+                if videos is not None:
+                    videos.append((name or act.name, url))
+                continue
             if manifest.has(url):
                 continue
             resp = sess.get_raw(url)
@@ -88,6 +159,11 @@ def _download_activity(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 p = save_response(resp, dest, cfg, manifest, url)
                 if p:
                     new.append(str(p))
+        return new
+
+    if is_recording(act.url, act.name):
+        if videos is not None:
+            videos.append((act.name, act.url))
         return new
 
     # resource / pluginfile
@@ -104,6 +180,10 @@ def _download_activity(sess: MoodleSession, cfg: Config, manifest: Manifest,
         if not links:
             return new
         _, file_url = links[0]
+        if is_recording(file_url, act.name):
+            if videos is not None:
+                videos.append((act.name, file_url))
+            return new
         if manifest.has(file_url):
             existing = manifest.data[manifest.key(file_url)]["path"]
             manifest.add(act.url, Path(existing), 0)  # remember the view url too
@@ -204,7 +284,8 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
               unit: Unit) -> int:
     print(f"\n=== {unit.code} "
           f"({cfg.base_url}/course/view.php?id={unit.course_id}) ===")
-    infos = crawl_sections(sess, cfg, unit)
+    pending: dict[int, list[str]] = {}
+    infos = crawl_sections(sess, cfg, unit, pending)
     if not infos:
         print("  ! No sections found - the page layout may be unusual.")
         return 0
@@ -212,6 +293,7 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
     total_new = 0
     assessments: list[tuple[Activity, str]] = []
     week_links: dict[int, list[tuple[str, str]]] = {}
+    week_videos: dict[int, list[tuple[str, str]]] = {}
     for n in sorted(infos):
         info = infos[n]
         files = [a for a in info.activities
@@ -225,9 +307,9 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 collected = []
                 for a in links:
                     collected.append((a.name, a.url))
-                    # A "page" is often just a wrapper around an embedded
-                    # lecture recording - open it and take what is inside.
-                    if a.mod == "page":
+                    # A page or link activity is often just a wrapper around
+                    # an embedded recording - open it and take what is inside.
+                    if a.mod in ("page", "url"):
                         collected += _open_page(sess, a)
                 week_links.setdefault(wk, []).extend(collected)
         if not files:
@@ -243,11 +325,15 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
             continue
         print(f"  [{label}] {info.title} - {len(files)} item(s)")
         for act in files:
+            found_videos: list[tuple[str, str]] = []
             try:
-                new = _download_activity(sess, cfg, manifest, act, dest)
+                new = _download_activity(sess, cfg, manifest, act, dest,
+                                         found_videos)
             except Exception as e:
                 print(f"    ! {act.name}: {e}")
                 continue
+            if found_videos and week is not None:
+                week_videos.setdefault(week, []).extend(found_videos)
             for p in new:
                 print(f"    + {_rel(cfg, p)}")
             total_new += len(new)
@@ -263,14 +349,22 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
     if cfg.transcripts:
         try:
             total_new += _sync_transcripts(sess, cfg, manifest, unit,
-                                           week_links, no_captions)
+                                           week_links, no_captions,
+                                           week_videos)
         except Exception as e:
             print(f"  ! transcripts: {e}")
+
+    # Pending items are collected per section; the notes are per week.
+    pending_by_week: dict[int, list[str]] = {}
+    for section_number, names in pending.items():
+        wk = week_of(infos, section_number, cfg)
+        if wk is not None:
+            pending_by_week.setdefault(wk, []).extend(names)
 
     if cfg.weekly_notes:
         try:
             written = _write_week_notes(cfg, unit, week_links, found,
-                                        no_captions)
+                                        no_captions, pending_by_week)
             for p in written:
                 print(f"    ~ {_rel(cfg, p)}")
         except Exception as e:
@@ -278,22 +372,45 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
     return total_new
 
 
-def _open_page(sess: MoodleSession, act: Activity) -> list[tuple[str, str]]:
-    """Recordings embedded inside a Moodle page activity."""
+def _open_page(sess: MoodleSession, act: Activity, depth: int = 0,
+               seen: set[str] | None = None) -> list[tuple[str, str]]:
+    """Recordings reached through a Moodle activity.
+
+    A page or link activity is often just a wrapper: the page holds an
+    embedded player, or the link bounces to another Moodle page that does.
+    Following one level is not enough, so this recurses - with a small depth
+    limit and a visited set, because course pages do link back to each other.
+    """
+    seen = seen if seen is not None else set()
+    if depth > MAX_FOLLOW_DEPTH or act.url in seen:
+        return []
+    seen.add(act.url)
     try:
         html = sess.get_html(act.url)
     except Exception:
         return []
+
     found = extract_media_urls(html)
-    # Name them after the page, which is what the student actually sees.
-    return [(act.name if len(found) == 1 else f"{act.name} — {label}", url)
-            for label, url in found]
+    out = [(act.name if len(found) == 1 else f"{act.name} — {label}", url)
+           for label, url in found]
+
+    # Nothing playable here: follow any Moodle activity this one points to.
+    if not found and depth < MAX_FOLLOW_DEPTH:
+        for m in re.finditer(r'href="([^"]*/mod/(?:page|url|resource|book|'
+                             r'lesson)/view\.php\?id=\d+)"', html):
+            nxt = m.group(1).replace("&amp;", "&")
+            if nxt not in seen:
+                out += _open_page(sess, Activity(name=act.name, url=nxt,
+                                                 mod="page"), depth + 1, seen)
+    return out
 
 
 def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                       unit: Unit,
                       week_links: dict[int, list[tuple[str, str]]],
-                      no_captions: dict[int, list[tuple[str, str]]]) -> int:
+                      no_captions: dict[int, list[tuple[str, str]]],
+                      week_videos: dict[int, list[tuple[str, str]]] | None = None
+                      ) -> int:
     """Save captions for the week's recordings as readable transcripts.
 
     Recordings that turn out to have no captions are reported back so the
@@ -317,17 +434,28 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                     panopto = captions.PanoptoClient(sess)
                 got = panopto.transcript(*ids)
                 if not got:
-                    no_captions.setdefault(week, []).append((label, url))
+                    no_captions.setdefault(week, []).append(
+                        (label, url, captions.NONE))
                     continue
                 title, text = got
                 source = "Panopto"
             else:
-                text = captions.youtube_transcript(vid)
-                if not text:
-                    no_captions.setdefault(week, []).append((label, url))
-                    continue
-                source = "YouTube"
                 title = captions.youtube_title(vid) or f"{label} ({vid})"
+                text, reason = captions.youtube_transcript(vid)
+                source = "YouTube"
+                if not text and reason != captions.NONE \
+                        and summariser.can_transcribe:
+                    # Rate-limited or unreachable: let the AI read the video
+                    # from its own side instead of ours.
+                    try:
+                        text = summariser.transcribe_youtube(url)
+                        source = "YouTube (read by AI)"
+                    except ai.AIError as e:
+                        print(f"    ! {title}: {e}")
+                if not text:
+                    no_captions.setdefault(week, []).append(
+                        (label, url, reason))
+                    continue
             summary = ""
             if summariser and summariser.enabled:
                 try:
@@ -339,6 +467,9 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
             manifest.add(key, path, path.stat().st_size)
             print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
             new += 1
+
+    new += _transcribe_moodle_videos(sess, cfg, manifest, unit, summariser,
+                                     no_captions, week_videos or {})
 
     # Transcripts saved before the AI was configured still deserve a summary.
     if summariser.enabled:
@@ -357,13 +488,101 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
     return new
 
 
+def _transcribe_moodle_videos(sess: MoodleSession, cfg: Config,
+                              manifest: Manifest, unit: Unit,
+                              summariser: "ai.Summariser",
+                              no_captions: dict,
+                              week_videos: dict[int, list[tuple[str, str]]]
+                              ) -> int:
+    """Handle recordings Moodle hosts itself.
+
+    These carry no caption API. If staff attached a subtitle file we use it;
+    otherwise the recording is fetched to a temporary file, read by the AI,
+    and deleted - the video itself is never kept.
+    """
+    new = 0
+    for week, items in sorted(week_videos.items()):
+        dest = week_dir(cfg, unit.code, week)
+        for name, url in items:
+            key = f"transcript:moodle:{url.split('?')[0]}"
+            if manifest.has(key):
+                continue
+            title = Path(name).stem or "Recording"
+            text = ""
+
+            # 1. a subtitle file published beside the recording
+            try:
+                page_html = sess.get_html(url) if "/mod/" in url else ""
+            except Exception:
+                page_html = ""
+            for track in captions.caption_track_urls(page_html, cfg.base_url):
+                r = sess.get_raw(track)
+                if r.ok and len(r.text()) > 50:
+                    text = captions.vtt_to_text(r.text())
+                    break
+
+            # 2. otherwise let the AI listen to it
+            if not text and cfg.transcribe_media and summariser.can_transcribe:
+                try:
+                    text = _ai_read_video(sess, cfg, summariser, url)
+                except (ai.AIError, OSError) as e:
+                    print(f"    ! {title}: {e}")
+            if not text:
+                no_captions.setdefault(week, []).append(
+                    (name, url, captions.NONE))
+                continue
+
+            summary = ""
+            if summariser.enabled:
+                try:
+                    summary = summariser.summarise(title, text)
+                except ai.AIError as e:
+                    print(f"    ! summary for {title}: {e}")
+            path = captions.save_transcript(dest, title, "Moodle recording",
+                                            url, text, summary)
+            manifest.add(key, path, path.stat().st_size)
+            print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
+            new += 1
+    return new
+
+
+def _ai_read_video(sess: MoodleSession, cfg: Config,
+                   summariser: "ai.Summariser", url: str) -> str:
+    """Fetch a recording to a temporary file just long enough to read it."""
+    resp = sess.get_raw(url)
+    if not resp.ok:
+        return ""
+    blob = resp.body()
+    size_mb = len(blob) / (1024 * 1024)
+    if size_mb > cfg.max_transcribe_mb:
+        print(f"    ! recording is {size_mb:.0f} MB - over the "
+              f"{cfg.max_transcribe_mb} MB limit, skipped")
+        return ""
+    suffix = Path(urlparse(url).path).suffix or ".mp4"
+    tmp = Path(tempfile.gettempdir()) / f"moodle-dl-media{suffix}"
+    try:
+        tmp.write_bytes(blob)
+        return summariser.transcribe_file(tmp, _mime_for(suffix))
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _mime_for(suffix: str) -> str:
+    return {".mp4": "video/mp4", ".mov": "video/quicktime",
+            ".webm": "video/webm", ".mkv": "video/x-matroska",
+            ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+            ".wav": "audio/wav"}.get(suffix.lower(), "video/mp4")
+
+
 def _write_week_notes(cfg: Config, unit: Unit,
                       week_links: dict[int, list[tuple[str, str]]],
                       assessments: list[notes.Assessment],
-                      no_captions: dict[int, list[tuple[str, str]]] | None = None
+                      no_captions: dict[int, list[tuple[str, str]]] | None = None,
+                      pending: dict[int, list[str]] | None = None
                       ) -> list[Path]:
     """Refresh the per-week summary note for every week that has content."""
     written = []
+    pending_by_week = pending or {}
     for week in cfg.weeks:
         note = notes.WeekNote(
             unit=unit.code, week=week,
@@ -371,6 +590,7 @@ def _write_week_notes(cfg: Config, unit: Unit,
             links=week_links.get(week, []),
             assessments=assessments,
             no_captions=(no_captions or {}).get(week, []),
+            pending=pending_by_week.get(week, []),
         )
         path = notes.write_note(cfg, note)
         if path:

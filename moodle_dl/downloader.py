@@ -85,6 +85,10 @@ def save_response(resp, directory: Path, cfg: Config,
     ext = Path(filename).suffix.lower()
     if cfg.skip_extensions and ext in cfg.skip_extensions:
         return None
+    # Recordings are wanted as text, not as gigabytes of video.
+    from .captions import VIDEO_EXTS
+    if not cfg.download_videos and ext in VIDEO_EXTS:
+        return None
     _long(directory).mkdir(parents=True, exist_ok=True)
     body = resp.body()
 

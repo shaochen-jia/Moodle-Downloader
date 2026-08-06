@@ -58,6 +58,13 @@ class WeekNote:
     # Recordings that exist but carry no captions - worth naming, because
     # otherwise they vanish from the week without trace.
     no_captions: list[tuple[str, str]] = dataclasses.field(default_factory=list)
+    # Material the course lists but has not released yet
+    pending: list[str] = dataclasses.field(default_factory=list)
+
+
+def _reason(code: str) -> str:
+    from .captions import reason_text
+    return reason_text(code)
 
 
 def _describe(path: Path) -> str:
@@ -108,11 +115,22 @@ def build_markdown(note: WeekNote) -> str:
         lines.append("")
 
     if note.no_captions:
-        lines += ["## Recordings you have to watch yourself", "",
-                  "*No captions were published for these, so there is no "
-                  "transcript to read.*", ""]
-        for label, url in note.no_captions:
-            lines.append(f"- [{label or url}]({url})")
+        lines += ["## Recordings with no transcript", "",
+                  "*Everything else in this week was turned into text; these "
+                  "were not, for the reason given.*", ""]
+        for item in note.no_captions:
+            label, url = item[0], item[1]
+            reason = item[2] if len(item) > 2 else ""
+            why = f" — {_reason(reason)}" if reason else ""
+            lines.append(f"- [{label or url}]({url}){why}")
+        lines.append("")
+
+    if note.pending:
+        lines += ["## Not released yet", "",
+                  "*Listed in the unit but not open to you yet — they will "
+                  "download by themselves once staff release them.*", ""]
+        for name in note.pending:
+            lines.append(f"- {name}")
         lines.append("")
 
     soon = _upcoming(note.assessments)
@@ -174,10 +192,18 @@ def _write_docx(note: WeekNote, path: Path, files: list[Path]) -> None:
                 doc.add_paragraph(f"{label or 'Link'} — {url}", style="List Bullet")
 
         if note.no_captions:
-            doc.add_heading("Recordings you have to watch yourself", level=2)
-            for label, url in note.no_captions:
-                doc.add_paragraph(f"{label or 'Recording'} — {url}",
-                                  style="List Bullet")
+            doc.add_heading("Recordings with no transcript", level=2)
+            for item in note.no_captions:
+                label, url = item[0], item[1]
+                why = _reason(item[2]) if len(item) > 2 else ""
+                doc.add_paragraph(
+                    f"{label or 'Recording'} — {url}"
+                    + (f" ({why})" if why else ""), style="List Bullet")
+
+        if note.pending:
+            doc.add_heading("Not released yet", level=2)
+            for name in note.pending:
+                doc.add_paragraph(name, style="List Bullet")
 
         soon = _upcoming(note.assessments)
         if soon:
@@ -186,5 +212,7 @@ def _write_docx(note: WeekNote, path: Path, files: list[Path]) -> None:
                 when = a.due_date.strftime("%a %d %b, %I:%M %p") if a.due_date else a.due
                 doc.add_paragraph(f"{a.name} — due {when}", style="List Bullet")
         doc.save(str(path))
-    except Exception:
-        pass  # a missing Word copy must never fail a sync
+    except Exception as e:
+        # A missing Word copy must never fail a sync, but silence hides bugs.
+        print(f"    ! Word copy for week {note.week:02d}: "
+              f"{type(e).__name__}: {e}")

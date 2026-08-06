@@ -11,6 +11,7 @@ transcript endpoint.
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -18,6 +19,36 @@ from .downloader import sanitize
 from .session import MoodleSession
 
 TRANSCRIPT_DIR = "Transcripts"
+
+VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".wmv", ".flv",
+              ".mp3", ".m4a", ".wav"}
+
+# Why a recording produced no transcript. The distinction matters: "none"
+# is final, "blocked" and "error" are worth trying again next sync.
+NONE = "none"            # the recording genuinely has no captions
+BLOCKED = "blocked"      # the platform is rate-limiting us
+ERROR = "error"          # network or platform failure
+SIGNIN = "needs-signin"  # the platform wants a human to authenticate
+
+RETRYABLE = {BLOCKED, ERROR, SIGNIN}
+
+YOUTUBE_MIN_GAP_S = 4.0  # spacing between YouTube caption requests
+
+_REASON_TEXT = {
+    NONE: "no captions published",
+    BLOCKED: "the platform is rate-limiting us - will retry",
+    ERROR: "could not be reached - will retry",
+    SIGNIN: "needs you to sign in to the video platform",
+}
+
+
+def reason_text(reason: str) -> str:
+    return _REASON_TEXT.get(reason, reason)
+
+
+def is_video_file(name_or_url: str) -> bool:
+    lowered = name_or_url.split("?")[0].lower()
+    return any(lowered.endswith(ext) for ext in VIDEO_EXTS)
 
 _PANOPTO_HOST = re.compile(r"https://([\w.-]*panopto\.com)", re.I)
 _YT_ID = re.compile(r"(?:v=|youtu\.be/|/embed/)([A-Za-z0-9_-]{11})")
@@ -69,58 +100,89 @@ class PanoptoClient:
         self.sess = sess
         self.ready: set[str] = set()
 
-    def _sign_in(self, host: str) -> bool:
+    @staticmethod
+    def _choose_institution(page) -> None:
+        """Panopto's login page asks which identity provider to use."""
+        try:
+            options = page.evaluate(
+                "() => { const s = document.querySelector('select');"
+                " return s ? [...s.options].map(o => ({t:o.text, v:o.value})) : []; }")
+            pick = next((o for o in options
+                         if "okta" in o["t"].lower()
+                         or "monash" in o["t"].lower()), None)
+            if pick:
+                page.select_option("select", pick["v"])
+                page.wait_for_timeout(400)
+            for sel in ("#loginButton", "input[type=submit]",
+                        "button[type=submit]", "a:has-text('Sign in')"):
+                el = page.query_selector(sel)
+                if el:
+                    el.click()
+                    return
+        except Exception:
+            pass
+
+    def _open(self, url: str, done: str, tries: int = 3) -> bool:
+        """Open a Panopto page, completing sign-in as many times as it asks."""
         page = self.sess.ctx.new_page()
         try:
-            page.goto(f"https://{host}/Panopto/Pages/Sessions/List.aspx",
-                      wait_until="domcontentloaded")
+            page.goto(url, wait_until="domcontentloaded")
             page.wait_for_timeout(2500)
-            if "Login.aspx" in page.url:
-                # Choose the university provider, then submit.
-                try:
-                    options = page.evaluate(
-                        "() => { const s = document.querySelector('select');"
-                        " return s ? [...s.options].map(o => ({t:o.text, v:o.value})) : []; }")
-                    pick = next((o for o in options
-                                 if "okta" in o["t"].lower()
-                                 or "monash" in o["t"].lower()), None)
-                    if pick:
-                        page.select_option("select", pick["v"])
-                        page.wait_for_timeout(400)
-                    for sel in ("#loginButton", "input[type=submit]",
-                                "button[type=submit]", "a:has-text('Sign in')"):
-                        el = page.query_selector(sel)
-                        if el:
-                            el.click()
-                            break
-                except Exception:
-                    pass
-                for _ in range(30):
-                    page.wait_for_timeout(2000)
+            for _ in range(tries):
+                if "Login.aspx" not in page.url:
+                    break
+                self._choose_institution(page)
+                for _ in range(20):
+                    page.wait_for_timeout(1500)
                     if "Login.aspx" not in page.url:
                         break
-            ok = "Login.aspx" not in page.url
+            return done in page.url and "Login.aspx" not in page.url
         except Exception:
-            ok = False
+            return False
         finally:
             page.close()
+
+    def _sign_in(self, host: str) -> bool:
+        ok = self._open(f"https://{host}/Panopto/Pages/Sessions/List.aspx",
+                        done="/Panopto/Pages/")
         if ok:
             self.ready.add(host)
         return ok
+
+    def _authorise_video(self, host: str, guid: str) -> bool:
+        """Panopto grants access per recording, not once per site.
+
+        Reading a session's metadata without opening its viewer first returns
+        an empty response - which looks exactly like "this video has no
+        captions". Opening the viewer performs the per-video authorisation.
+        """
+        return self._open(
+            f"https://{host}/Panopto/Pages/Viewer.aspx?id={guid}",
+            done="Viewer.aspx")
+
+    def _delivery(self, host: str, guid: str) -> dict:
+        info = self.sess.ctx.request.post(
+            f"https://{host}/Panopto/Pages/Viewer/DeliveryInfo.aspx",
+            form={"deliveryId": guid, "responseType": "json"})
+        if not info.ok:
+            return {}
+        try:
+            return info.json().get("Delivery", {}) or {}
+        except Exception:
+            return {}
 
     def transcript(self, host: str, guid: str) -> tuple[str, str] | None:
         """Returns (session title, transcript text) when captions exist."""
         if host not in self.ready and not self._sign_in(host):
             return None
         base = f"https://{host}/Panopto"
-        info = self.sess.ctx.request.post(
-            f"{base}/Pages/Viewer/DeliveryInfo.aspx",
-            form={"deliveryId": guid, "responseType": "json"})
-        if not info.ok:
-            return None
-        try:
-            deliv = info.json().get("Delivery", {})
-        except Exception:
+        deliv = self._delivery(host, guid)
+        if not deliv.get("SessionName"):
+            # Empty means "not authorised for this recording yet", not
+            # "no such recording" - open its viewer and ask again.
+            if self._authorise_video(host, guid):
+                deliv = self._delivery(host, guid)
+        if not deliv:
             return None
         if not deliv.get("HasCaptions"):
             return None
@@ -152,17 +214,57 @@ def youtube_title(video_id: str) -> str | None:
         return None
 
 
-def youtube_transcript(video_id: str) -> str | None:
+_last_youtube_call = 0.0
+
+
+def youtube_transcript(video_id: str) -> tuple[str | None, str]:
+    """(text, reason). Requests are spaced out: fetching many transcripts
+    back to back is what gets an IP rate-limited in the first place."""
+    global _last_youtube_call
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
     except ImportError:
-        return None
+        return None, ERROR
+
+    wait = YOUTUBE_MIN_GAP_S - (time.monotonic() - _last_youtube_call)
+    if wait > 0:
+        time.sleep(wait)
+    _last_youtube_call = time.monotonic()
+
     try:
         fetched = YouTubeTranscriptApi().fetch(video_id)
         text = " ".join(snippet.text for snippet in fetched)
-        return srt_to_text(text) if text.strip() else None
-    except Exception:
-        return None  # no captions, age-gated, or region blocked
+        return (srt_to_text(text), "ok") if text.strip() else (None, NONE)
+    except Exception as e:
+        name = type(e).__name__
+        if "IpBlocked" in name or "TooManyRequests" in name or "429" in str(e):
+            return None, BLOCKED
+        if "Disabled" in name or "NoTranscript" in name or "NotFound" in name:
+            return None, NONE
+        return None, ERROR
+
+
+def caption_track_urls(html: str, base_url: str) -> list[str]:
+    """Subtitle files a Moodle player advertises next to a video."""
+    from urllib.parse import urljoin
+
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    out = []
+    for track in soup.select("track[src]"):
+        kind = (track.get("kind") or "").lower()
+        if kind in ("", "captions", "subtitles"):
+            out.append(urljoin(base_url, track["src"]))
+    for a in soup.select('a[href$=".vtt"], a[href$=".srt"]'):
+        out.append(urljoin(base_url, a["href"]))
+    return out
+
+
+def vtt_to_text(vtt: str) -> str:
+    """WebVTT shares SRT's shape once the header and cue ids are gone."""
+    body = re.sub(r"^WEBVTT.*?\n\n", "", vtt, flags=re.S)
+    body = re.sub(r"^\s*\d+\s*$", "", body, flags=re.M)
+    return srt_to_text(body)
 
 
 SUMMARY_HEADING = "## Summary"
