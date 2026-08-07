@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import documents
 from .downloader import sanitize
 from .session import MoodleSession
 
@@ -29,8 +30,9 @@ NONE = "none"            # the recording genuinely has no captions
 BLOCKED = "blocked"      # the platform is rate-limiting us
 ERROR = "error"          # network or platform failure
 SIGNIN = "needs-signin"  # the platform wants a human to authenticate
+DEFERRED = "deferred"    # held back on purpose to avoid a burst of requests
 
-RETRYABLE = {BLOCKED, ERROR, SIGNIN}
+RETRYABLE = {BLOCKED, ERROR, SIGNIN, DEFERRED}
 
 YOUTUBE_MIN_GAP_S = 4.0  # spacing between YouTube caption requests
 
@@ -39,6 +41,7 @@ _REASON_TEXT = {
     BLOCKED: "the platform is rate-limiting us - will retry",
     ERROR: "could not be reached - will retry",
     SIGNIN: "needs you to sign in to the video platform",
+    DEFERRED: "queued for the next sync, to stay under YouTube's limits",
 }
 
 
@@ -271,43 +274,72 @@ SUMMARY_HEADING = "## Summary"
 
 
 def transcripts_without_summary(week_folder: Path) -> list[Path]:
-    """Existing transcripts that predate the AI being switched on."""
+    """Transcripts still waiting for a summary.
+
+    The readable copy is what we inspect, because the Word version cannot be
+    read back as text - and a summary that failed on one run has to be
+    retried on the next.
+    """
     folder = week_folder / TRANSCRIPT_DIR
     if not folder.exists():
         return []
     out = []
-    for p in sorted(folder.glob("*.md")):
-        try:
-            if SUMMARY_HEADING not in p.read_text(encoding="utf-8"):
+    for ext in (".txt", ".md"):
+        for p in sorted(folder.glob(f"*{ext}")):
+            if p.with_suffix(".txt") in out or p.with_suffix(".md") in out:
+                continue
+            try:
+                body = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            head = "\n".join(body.splitlines()[:40])
+            if "Summary" not in head:
                 out.append(p)
-        except OSError:
-            continue
     return out
 
 
-def add_summary(path: Path, summary: str) -> None:
-    """Insert a summary into an existing transcript, above the body."""
-    text = path.read_text(encoding="utf-8")
-    marker = "---\n\n"
-    head, sep, body = text.partition(marker)
-    if not sep:
-        head, body = "", text
-        sep = ""
-    path.write_text(
-        f"{head}{sep}{SUMMARY_HEADING}\n\n{summary}\n\n---\n\n"
-        f"## Full transcript\n\n{body}", encoding="utf-8")
+def _split_transcript(text: str) -> tuple[str, str, str]:
+    """(title, source line, transcript body) from a saved transcript."""
+    lines = text.splitlines()
+    title = ""
+    source = ""
+    for line in lines[:8]:
+        clean = line.lstrip("# ").strip()
+        if clean and not title and not set(clean) <= set("-="):
+            title = clean
+        elif clean.lower().startswith("transcript from"):
+            source = clean
+    marker = "Full transcript"
+    if marker in text:
+        body = text.split(marker, 1)[1]
+    else:
+        # No summary yet: everything after the source line is the transcript.
+        body = text.split(source, 1)[-1] if source else text
+    return title, source, body.lstrip("\n-\n").lstrip()
+
+
+def add_summary(path: Path, summary: str,
+                formats=documents.DEFAULT_FORMATS) -> None:
+    """Rebuild a transcript with its summary, in every chosen format."""
+    title, source, body = _split_transcript(
+        path.read_text(encoding="utf-8"))
+    md = (f"# {title}\n\n*{source}*\n\n---\n\n"
+          f"{SUMMARY_HEADING}\n\n{summary}\n\n---\n\n"
+          f"## Full transcript\n\n{body}\n")
+    documents.write(path.with_suffix(""), md, formats)
 
 
 def save_transcript(dest: Path, title: str, source: str, url: str,
-                    text: str, summary: str = "") -> Path:
+                    text: str, summary: str = "",
+                    formats=documents.DEFAULT_FORMATS) -> Path:
     folder = dest / TRANSCRIPT_DIR
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{sanitize(title)}.md"
+    stem = folder / sanitize(title)
     header = (f"# {title}\n\n"
               f"*Transcript from {source} — [original recording]({url})*\n\n"
               f"---\n\n")
     if summary:
         header += (f"## Summary\n\n{summary}\n\n---\n\n"
                    f"## Full transcript\n\n")
-    path.write_text(header + text + "\n", encoding="utf-8")
-    return path
+    written = documents.write(stem, header + text + "\n", formats)
+    return written[0] if written else stem.with_suffix(".txt")

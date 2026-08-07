@@ -52,10 +52,15 @@ class Config:
     assignments_folder: str = "Assignments"  # "" disables assignment capture
     sync_interval_hours: float = 3.0  # auto-sync repeat interval
     weekly_notes: bool = True  # write a Week NN Summary note per week
+    # Word first, plain text second: Markdown is unfamiliar to most readers.
+    note_formats: tuple[str, ...] = ("docx", "txt")
     transcripts: bool = True  # save captions of lecture recordings
     download_videos: bool = False  # keep the video files themselves
     transcribe_media: bool = True  # let the AI read recordings with no captions
     max_transcribe_mb: int = 300  # skip recordings larger than this
+    # YouTube rate-limits an address that asks for many transcripts at once,
+    # so a first sync spreads them over several runs instead of bursting.
+    max_youtube_per_sync: int = 8
     # Optional AI summaries - everything works without these
     ai_provider: str = ""     # gemini | anthropic | openai | deepseek | ...
     ai_api_key: str = ""
@@ -105,10 +110,14 @@ def load_config(path: str | Path) -> Config:
         assignments_folder=str(raw.get("assignments_folder", "Assignments")),
         sync_interval_hours=float(raw.get("sync_interval_hours", 3)),
         weekly_notes=bool(raw.get("weekly_notes", True)),
+        note_formats=tuple(
+            f for f in (raw.get("note_formats") or ["docx", "txt"])
+            if f in ("docx", "txt", "md")) or ("docx", "txt"),
         transcripts=bool(raw.get("transcripts", True)),
         download_videos=bool(raw.get("download_videos", False)),
         transcribe_media=bool(raw.get("transcribe_media", True)),
         max_transcribe_mb=int(raw.get("max_transcribe_mb", 300)),
+        max_youtube_per_sync=int(raw.get("max_youtube_per_sync", 8)),
         ai_provider=str(raw.get("ai_provider", "") or ""),
         ai_api_key=str(raw.get("ai_api_key", "") or ""),
         ai_model=str(raw.get("ai_model", "") or ""),

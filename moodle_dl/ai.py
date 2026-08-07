@@ -26,6 +26,7 @@ from .config import Config
 
 TIMEOUT_S = 300  # free tiers can be slow on a full lecture transcript
 MIN_CALL_GAP_S = 6.0        # spacing between calls, free tiers are strict
+MAX_SUMMARY_TOKENS = 8000   # room for notes that can replace the lecture
 RATE_LIMIT_BACKOFF_S = 20.0  # extra wait after a rate-limit response
 
 # Sensible defaults so a user only has to supply a key
@@ -82,20 +83,40 @@ class AIError(RuntimeError):
     pass
 
 
+class QuotaExhausted(AIError):
+    """The daily or per-minute allowance is gone.
+
+    Worth its own type: once it happens, every further call in the same run
+    will fail the same way, so the run should stop asking instead of waiting
+    out a backoff for each remaining item.
+    """
+
+
 _last_call = 0.0
 
 
 def _readable(code: int, body: str) -> str:
     """Turn a provider error into something worth reading in a log."""
-    if code == 429:
-        return "the AI quota is exhausted for now - it will retry later"
-    if code in (401, 403):
-        return "the API key was rejected"
+    detail = ""
     try:
-        msg = json.loads(body)["error"]["message"]
-        return f"HTTP {code}: {msg[:160]}"
+        err = json.loads(body).get("error", {})
+        detail = err.get("message", "")
+        status = err.get("status", "")
     except Exception:
-        return f"HTTP {code}: {body[:160]}"
+        status = ""
+    if code == 429 or status == "RESOURCE_EXHAUSTED":
+        return "the AI quota is used up for now - it will retry next sync"
+    if code == 403:
+        # A free key answers 403 when it is being throttled as well as when
+        # it is genuinely wrong, so do not accuse the key.
+        return "the provider refused this request - it will retry next sync"
+    if code == 401:
+        return "the API key was rejected"
+    return f"HTTP {code}: {(detail or body)[:160]}"
+
+
+def _retryable(code: int) -> bool:
+    return code in (403, 429, 500, 502, 503, 504)
 
 
 def _post(url: str, payload: dict, headers: dict, retries: int = 2) -> dict:
@@ -115,10 +136,13 @@ def _post(url: str, payload: dict, headers: dict, retries: int = 2) -> dict:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")
-            if e.code == 429 and attempt < retries:
+            if _retryable(e.code) and attempt < retries:
                 time.sleep(RATE_LIMIT_BACKOFF_S * (attempt + 1))
                 continue
-            raise AIError(_readable(e.code, body)) from None
+            message = _readable(e.code, body)
+            if e.code == 429 or "RESOURCE_EXHAUSTED" in body:
+                raise QuotaExhausted(message) from None
+            raise AIError(message) from None
         except Exception as e:
             if attempt < retries:
                 time.sleep(2)
@@ -136,6 +160,7 @@ class Summariser:
         preset = PRESETS.get(self.provider, {})
         self.model = (cfg.ai_model or preset.get("model") or "").strip()
         self.base_url = (cfg.ai_base_url or preset.get("base_url") or "").rstrip("/")
+        self.out_of_quota = False
 
     @property
     def enabled(self) -> bool:
@@ -143,26 +168,53 @@ class Summariser:
             return False
         return bool(self.key) or self.provider == "ollama"
 
-    def summarise(self, title: str, text: str, max_chars: int = 60_000) -> str:
+    @property
+    def available(self) -> bool:
+        """Enabled and not already known to be out of allowance this run."""
+        return self.enabled and not self.out_of_quota
+
+    def _guard(self, call):
+        if self.out_of_quota:
+            raise QuotaExhausted("the AI allowance is already used up "
+                                 "for this run")
+        try:
+            return call()
+        except QuotaExhausted:
+            self.out_of_quota = True
+            raise
+
+    def summarise(self, title: str, text: str, max_chars: int = 120_000) -> str:
+        """Study notes for one piece of material.
+
+        These are meant to be read instead of the lecture, not as a teaser
+        for it, so the notes are thorough: every topic that was covered gets
+        its own section rather than a single line.
+        """
         if not self.enabled:
             return ""
         body = text[:max_chars]
         prompt = (
-            "You are helping a university student revise. Summarise the "
-            "material below into concise study notes in Markdown:\n"
-            "- open with a one-sentence description of what it covers\n"
-            "- then the key points as bullets, grouped under short headings\n"
-            "- keep technical terms, formulas and definitions exact\n"
-            "- note anything flagged as assessable or examinable\n"
-            "- do not invent anything that is not in the material\n\n"
+            "You are helping a university student revise for an exam. Write "
+            "thorough study notes on the material below, in Markdown.\n"
+            "- open with two or three sentences on what it covers overall\n"
+            "- then work through the content in order, one short heading per "
+            "topic, with bullets under each\n"
+            "- cover every topic that is explained; do not skip any\n"
+            "- keep definitions, formulas, numbers and technical terms exact, "
+            "and explain each one in a sentence\n"
+            "- keep worked examples, including the steps\n"
+            "- call out anything described as assessable, examinable, a "
+            "common mistake, or important\n"
+            "- finish with the key takeaways\n"
+            "- never invent anything that is not in the material\n\n"
             f"Material title: {title}\n\n---\n\n{body}"
         )
         if self.provider == "gemini":
-            return self._gemini(prompt)
+            return self._guard(lambda: self._gemini(prompt))
         if self.provider == "anthropic":
-            return self._anthropic(prompt)
+            return self._guard(lambda: self._anthropic(prompt))
         if self.provider in _OPENAI_STYLE:
-            return self._openai(prompt)
+            return self._guard(lambda: self._openai(prompt))
         raise AIError(f"Unknown ai_provider: {self.provider}")
 
     # -- transcription ----------------------------------------------------
@@ -170,7 +222,7 @@ class Summariser:
     @property
     def can_transcribe(self) -> bool:
         """Only Gemini is wired up to read media directly."""
-        return self.enabled and self.provider == "gemini"
+        return self.available and self.provider == "gemini"
 
     def transcribe_youtube(self, url: str) -> str:
         """Ask Gemini to read a YouTube video.
@@ -181,7 +233,8 @@ class Summariser:
         """
         if not self.can_transcribe:
             return ""
-        return self._gemini_media({"file_data": {"file_uri": url}})
+        return self._guard(
+            lambda: self._gemini_media({"file_data": {"file_uri": url}}))
 
     def transcribe_file(self, path: Path, mime: str = "video/mp4") -> str:
         """Upload a local recording and read back what is said in it."""
@@ -291,7 +344,9 @@ class Summariser:
 
     def _gemini(self, prompt: str) -> str:
         url = f"{self.base_url}/models/{self.model}:generateContent?key={self.key}"
-        out = _post(url, {"contents": [{"parts": [{"text": prompt}]}]}, {})
+        out = _post(url, {"contents": [{"parts": [{"text": prompt}]}],
+                          "generationConfig": {
+                              "maxOutputTokens": MAX_SUMMARY_TOKENS}}, {})
         candidate = (out.get("candidates") or [{}])[0]
         parts = (candidate.get("content") or {}).get("parts") or []
         if parts:
@@ -303,7 +358,7 @@ class Summariser:
 
     def _anthropic(self, prompt: str) -> str:
         out = _post(f"{self.base_url}/messages",
-                    {"model": self.model, "max_tokens": 2000,
+                    {"model": self.model, "max_tokens": MAX_SUMMARY_TOKENS,
                      "messages": [{"role": "user", "content": prompt}]},
                     {"x-api-key": self.key,
                      "anthropic-version": "2023-06-01"})
@@ -314,7 +369,7 @@ class Summariser:
 
     def _openai(self, prompt: str) -> str:
         out = _post(f"{self.base_url}/chat/completions",
-                    {"model": self.model, "max_tokens": 2000,
+                    {"model": self.model, "max_tokens": MAX_SUMMARY_TOKENS,
                      "messages": [{"role": "user", "content": prompt}]},
                     {"Authorization": f"Bearer {self.key or 'none'}"})
         try:

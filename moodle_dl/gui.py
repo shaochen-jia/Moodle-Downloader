@@ -90,6 +90,7 @@ class App(ctk.CTk):
         self.busy = False
         self.courses: list[Course] = []
         self.course_vars: list[ctk.BooleanVar] = []
+        self.cancel_event: threading.Event | None = None
         self.log_box = None
         self.status_label = None
 
@@ -183,6 +184,9 @@ class App(ctk.CTk):
         actions.pack(fill="x", padx=18, pady=16)
         self.sync_btn = _primary(actions, "Sync now", self._start_sync)
         self.sync_btn.pack(side="left", expand=True, fill="x")
+        self.cancel_btn = _ghost(actions, "Stop", self._cancel_sync, width=76)
+        self.cancel_btn.configure(height=38, text_color=t.DANGER,
+                                  border_color=t.DANGER)
         self.auto_var = ctk.BooleanVar(value=self._autosync_on())
         sw = ctk.CTkSwitch(actions, text="Auto-sync", variable=self.auto_var,
                            command=self._toggle_autosync, font=_font(13),
@@ -315,8 +319,10 @@ class App(ctk.CTk):
         if self.busy:
             return
         self.busy = True
+        self.cancel_event = threading.Event()
         self._set_buttons(enabled=False)
         self.sync_btn.configure(text="Syncing...")
+        self.cancel_btn.pack(side="left", padx=(8, 0))
         self.dot.configure(text_color=t.TEXT_MUTED)
         self._set_status("Checking Moodle for new files")
 
@@ -325,16 +331,29 @@ class App(ctk.CTk):
                 cfg = load_config(self.config_path)
                 with contextlib.redirect_stdout(_QueueWriter(self.q)), \
                         contextlib.redirect_stderr(_QueueWriter(self.q)):
-                    sync(cfg)
+                    sync(cfg, cancel=self.cancel_event)
                 self.q.put(("done", "sync"))
             except Exception as e:
                 self.q.put(("error", str(e)))
 
         self._run_bg(work)
 
+    def _cancel_sync(self) -> None:
+        """Ask the sync to stop. It finishes the item it is on first, so
+        nothing is left half-written."""
+        if not self.busy or self.cancel_event is None:
+            return
+        self.cancel_event.set()
+        self.cancel_btn.configure(state="disabled", text="Stopping")
+        self._set_status("Stopping after the current item...")
+
     def _on_done(self, what: str) -> None:
         self.busy = False
+        self.cancel_event = None
         self._set_buttons(enabled=True)
+        if self.cancel_btn.winfo_exists():
+            self.cancel_btn.pack_forget()
+            self.cancel_btn.configure(state="normal", text="Stop")
         if what != "sync":
             return
         if self.sync_btn.winfo_exists():
@@ -354,8 +373,18 @@ class App(ctk.CTk):
         page = ctk.CTkFrame(self, fg_color="transparent")
         page.pack(fill="both", expand=True, padx=22, pady=20)
 
-        _label(page, "Set up Moodle Downloader", size=16, bold=True,
-               anchor="w").pack(fill="x")
+        head = ctk.CTkFrame(page, fg_color="transparent")
+        head.pack(fill="x")
+        _label(head, "Set up Moodle Downloader", size=16, bold=True,
+               anchor="w").pack(side="left")
+        if self.config_path.exists():
+            # Only offer a way back once there are settings to go back to.
+            ctk.CTkButton(
+                head, text="Back", command=self._build_dashboard,
+                width=70, height=28, corner_radius=t.RADIUS_CTL,
+                font=_font(12), fg_color="transparent",
+                hover_color=t.GHOST_HOVER, text_color=t.TEXT_SECONDARY,
+                border_width=1, border_color=t.BORDER_STRONG).pack(side="right")
         self.status_label = _label(
             page, "Choose where files go, then load your course list.",
             size=12, color=t.TEXT_SECONDARY, anchor="w", wraplength=600,

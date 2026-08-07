@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from pathlib import Path
@@ -281,7 +281,7 @@ def _rel(cfg: Config, path) -> str:
 
 
 def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
-              unit: Unit) -> int:
+              unit: Unit, cancel=None) -> int:
     print(f"\n=== {unit.code} "
           f"({cfg.base_url}/course/view.php?id={unit.course_id}) ===")
     pending: dict[int, list[str]] = {}
@@ -325,6 +325,7 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
             continue
         print(f"  [{label}] {info.title} - {len(files)} item(s)")
         for act in files:
+            _check(cancel)
             found_videos: list[tuple[str, str]] = []
             try:
                 new = _download_activity(sess, cfg, manifest, act, dest,
@@ -353,6 +354,8 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
                                            week_videos)
         except Exception as e:
             print(f"  ! transcripts: {e}")
+
+    _report_skipped(no_captions)
 
     # Pending items are collected per section; the notes are per week.
     pending_by_week: dict[int, list[str]] = {}
@@ -391,7 +394,7 @@ def _open_page(sess: MoodleSession, act: Activity, depth: int = 0,
         return []
 
     found = extract_media_urls(html)
-    out = [(act.name if len(found) == 1 else f"{act.name} — {label}", url)
+    out = [(act.name if len(found) == 1 else f"{act.name} â€” {label}", url)
            for label, url in found]
 
     # Nothing playable here: follow any Moodle activity this one points to.
@@ -419,6 +422,7 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
     panopto: captions.PanoptoClient | None = None
     summariser = ai.Summariser(cfg)
     new = 0
+    youtube_done = 0
     for week, links in sorted(week_links.items()):
         dest = week_dir(cfg, unit.code, week)
         for label, url in links:
@@ -440,6 +444,13 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 title, text = got
                 source = "Panopto"
             else:
+                if youtube_done >= cfg.max_youtube_per_sync:
+                    # Asking YouTube for many transcripts in one burst is what
+                    # gets an address blocked; the rest wait for the next run.
+                    no_captions.setdefault(week, []).append(
+                        (label, url, captions.DEFERRED))
+                    continue
+                youtube_done += 1
                 title = captions.youtube_title(vid) or f"{label} ({vid})"
                 text, reason = captions.youtube_transcript(vid)
                 source = "YouTube"
@@ -463,7 +474,7 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 except ai.AIError as e:
                     print(f"    ! summary for {title}: {e}")
             path = captions.save_transcript(dest, title, source, url, text,
-                                            summary)
+                                            summary, cfg.note_formats)
             manifest.add(key, path, path.stat().st_size)
             print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
             new += 1
@@ -471,21 +482,56 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
     new += _transcribe_moodle_videos(sess, cfg, manifest, unit, summariser,
                                      no_captions, week_videos or {})
 
-    # Transcripts saved before the AI was configured still deserve a summary.
+    # Transcripts saved before the AI was configured, or while the allowance
+    # was used up, still deserve a summary.
+    waiting = 0
     if summariser.enabled:
         for week in cfg.weeks:
             for path in captions.transcripts_without_summary(
                     week_dir(cfg, unit.code, week)):
+                if not summariser.available:
+                    waiting += 1
+                    continue
                 try:
                     body = path.read_text(encoding="utf-8")
                     summary = summariser.summarise(path.stem, body)
+                except ai.QuotaExhausted as e:
+                    print(f"    ! {e}")
+                    waiting += 1
+                    continue
                 except (OSError, ai.AIError) as e:
                     print(f"    ! summary for {path.stem}: {e}")
                     continue
                 if summary:
-                    captions.add_summary(path, summary)
+                    captions.add_summary(path, summary, cfg.note_formats)
                     print(f"    ~ summary added to {_rel(cfg, path)}")
+    if waiting:
+        print(f"  {waiting} transcript(s) still need a summary - the AI "
+              f"allowance is used up for now. They are filled in "
+              f"automatically on later syncs; the full text is already saved.")
     return new
+
+
+def _report_skipped(no_captions: dict[int, list]) -> None:
+    """Say plainly which recordings produced no text, and why.
+
+    Without this the only trace is a line in a week note, and a student has
+    no way to tell a permanent gap from one that fixes itself.
+    """
+    counts: dict[str, int] = {}
+    for items in no_captions.values():
+        for item in items:
+            reason = item[2] if len(item) > 2 else captions.NONE
+            counts[reason] = counts.get(reason, 0) + 1
+    if not counts:
+        return
+    total = sum(counts.values())
+    print(f"  {total} recording(s) produced no transcript:")
+    for reason, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        print(f"    - {n} x {captions.reason_text(reason)}")
+    if any(r in captions.RETRYABLE for r in counts):
+        print("    These are picked up automatically on a later sync; "
+              "press Sync now to try again sooner.")
 
 
 def _transcribe_moodle_videos(sess: MoodleSession, cfg: Config,
@@ -533,13 +579,14 @@ def _transcribe_moodle_videos(sess: MoodleSession, cfg: Config,
                 continue
 
             summary = ""
-            if summariser.enabled:
+            if summariser.available:
                 try:
                     summary = summariser.summarise(title, text)
                 except ai.AIError as e:
                     print(f"    ! summary for {title}: {e}")
             path = captions.save_transcript(dest, title, "Moodle recording",
-                                            url, text, summary)
+                                            url, text, summary,
+                                            cfg.note_formats)
             manifest.add(key, path, path.stat().st_size)
             print(f"    + {_rel(cfg, path)}  ({len(text):,} chars)")
             new += 1
@@ -598,20 +645,35 @@ def _write_week_notes(cfg: Config, unit: Unit,
     return written
 
 
+class Cancelled(RuntimeError):
+    """Raised when the user asks a running sync to stop."""
+
+
+def _check(cancel) -> None:
+    """Stop between items, so cancelling is quick but never leaves a
+    half-written file behind."""
+    if cancel is not None and cancel.is_set():
+        raise Cancelled("Sync cancelled.")
+
+
 def sync(cfg: Config, headful: bool = False,
          only_units: list[str] | None = None,
-         background: bool = False) -> None:
+         background: bool = False, cancel=None) -> None:
     """Run one sync. `background` adds a desktop notification on new files,
     since an unattended run has no console for the user to read."""
     if not lock.acquire("sync"):
         print("Another sync is already running - skipping this one.")
         return
     try:
-        new_files = _sync_locked(cfg, headful, only_units)
+        new_files = _sync_locked(cfg, headful, only_units, cancel)
         history.record("ok", new_files)
         if background and new_files:
             notify(f"{new_files} new file{'s' if new_files != 1 else ''} "
                    "downloaded", f"Saved under {cfg.root_dir.name}.")
+    except Cancelled:
+        print("\nStopped at your request. Anything already downloaded is kept.")
+        history.record("cancelled")
+        return
     except LoginRequired as e:
         history.record("login-needed", detail=str(e))
         raise
@@ -623,7 +685,7 @@ def sync(cfg: Config, headful: bool = False,
 
 
 def _sync_locked(cfg: Config, headful: bool,
-                 only_units: list[str] | None) -> int:
+                 only_units: list[str] | None, cancel=None) -> int:
     manifest = Manifest(cfg.manifest_path)
 
     with MoodleSession(cfg, headful=headful) as sess:
@@ -647,9 +709,11 @@ def _sync_locked(cfg: Config, headful: bool,
 
         total = 0
         for unit in units:
-            total += sync_unit(sess, cfg, manifest, unit)
+            _check(cancel)
+            total += sync_unit(sess, cfg, manifest, unit, cancel)
         # Refresh the stored session after real work, so the next run starts
         # from a session that is minutes old rather than days old.
         sess.refresh_saved_session()
     print(f"\nDone. {total} new file(s) downloaded.")
     return total
+

@@ -57,4 +57,6 @@ def describe(run: dict) -> str:
         return f"{when} — {what}"
     if status == "login-needed":
         return f"{when} — waiting for you to sign in"
+    if status == "cancelled":
+        return f"{when} — stopped by you"
     return f"{when} — failed: {run.get('detail', '')[:80]}"
