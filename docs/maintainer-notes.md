@@ -56,6 +56,12 @@ What helps: fetching each video once (the manifest), spacing requests, a cap
 per sync, and asking Gemini to read the video from Google's side when we are
 blocked.
 
+**That cap has to span the whole run.** It was counted inside the per-unit
+transcript pass, so it reset on every unit - four units at eight each is the
+thirty-two request burst the cap exists to prevent, which is precisely how an
+address gets blocked. It is a `YouTubeBudget` handed to each unit now, so the
+limit means what its name says.
+
 **Zoom cloud recordings cannot be transcribed.** They are a share link plus a
 passcode with no caption endpoint. Staff sometimes paste the passcode into
 the link itself, which produces a broken address - it is split back out.

@@ -25,6 +25,25 @@ SEED_SECTIONS = 8      # always try section 0..7 even if not linked anywhere
 MAX_FOLLOW_DEPTH = 2   # how far to chase a video through wrapper pages
 
 
+class YouTubeBudget:
+    """How many YouTube caption fetches are left in this sync.
+
+    YouTube blocks by address, so the cap has to span the whole run: counting
+    per unit means four units at eight each is the same thirty-two request
+    burst the cap exists to prevent.
+    """
+
+    def __init__(self, limit: int):
+        self.left = limit
+
+    def take(self) -> bool:
+        """Claim one fetch, or report that the run is out."""
+        if self.left <= 0:
+            return False
+        self.left -= 1
+        return True
+
+
 def crawl_sections(sess: MoodleSession, cfg: Config, unit: Unit,
                    pending: dict[int, list[str]] | None = None
                    ) -> dict[int, SectionInfo]:
@@ -281,7 +300,8 @@ def _rel(cfg: Config, path) -> str:
 
 
 def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
-              unit: Unit, cancel=None) -> int:
+              unit: Unit, cancel=None,
+              yt_budget: YouTubeBudget | None = None) -> int:
     print(f"\n=== {unit.code} "
           f"({cfg.base_url}/course/view.php?id={unit.course_id}) ===")
     pending: dict[int, list[str]] = {}
@@ -351,7 +371,7 @@ def sync_unit(sess: MoodleSession, cfg: Config, manifest: Manifest,
         try:
             total_new += _sync_transcripts(sess, cfg, manifest, unit,
                                            week_links, no_captions,
-                                           week_videos)
+                                           week_videos, yt_budget)
         except Exception as e:
             print(f"  ! transcripts: {e}")
 
@@ -412,8 +432,8 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                       unit: Unit,
                       week_links: dict[int, list[tuple[str, str]]],
                       no_captions: dict[int, list[tuple[str, str]]],
-                      week_videos: dict[int, list[tuple[str, str]]] | None = None
-                      ) -> int:
+                      week_videos: dict[int, list[tuple[str, str]]] | None = None,
+                      yt_budget: YouTubeBudget | None = None) -> int:
     """Save captions for the week's recordings as readable transcripts.
 
     Recordings that turn out to have no captions are reported back so the
@@ -422,7 +442,8 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
     panopto: captions.PanoptoClient | None = None
     summariser = ai.Summariser(cfg)
     new = 0
-    youtube_done = 0
+    if yt_budget is None:  # a one-unit run still gets the full allowance
+        yt_budget = YouTubeBudget(cfg.max_youtube_per_sync)
     for week, links in sorted(week_links.items()):
         dest = week_dir(cfg, unit.code, week)
         for label, url in links:
@@ -444,13 +465,12 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
                 title, text = got
                 source = "Panopto"
             else:
-                if youtube_done >= cfg.max_youtube_per_sync:
+                if not yt_budget.take():
                     # Asking YouTube for many transcripts in one burst is what
                     # gets an address blocked; the rest wait for the next run.
                     no_captions.setdefault(week, []).append(
                         (label, url, captions.DEFERRED))
                     continue
-                youtube_done += 1
                 title = captions.youtube_title(vid) or f"{label} ({vid})"
                 text, reason = captions.youtube_transcript(vid)
                 source = "YouTube"
@@ -708,9 +728,10 @@ def _sync_locked(cfg: Config, headful: bool,
         print(f"Saving files to: {cfg.root_dir}")
 
         total = 0
+        yt_budget = YouTubeBudget(cfg.max_youtube_per_sync)
         for unit in units:
             _check(cancel)
-            total += sync_unit(sess, cfg, manifest, unit, cancel)
+            total += sync_unit(sess, cfg, manifest, unit, cancel, yt_budget)
         # Refresh the stored session after real work, so the next run starts
         # from a session that is minutes old rather than days old.
         sess.refresh_saved_session()
