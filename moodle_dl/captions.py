@@ -174,10 +174,18 @@ class PanoptoClient:
         except Exception:
             return {}
 
-    def transcript(self, host: str, guid: str) -> tuple[str, str] | None:
-        """Returns (session title, transcript text) when captions exist."""
+    def transcript(self, host: str,
+                   guid: str) -> tuple[tuple[str, str] | None, str]:
+        """Returns ((session title, transcript text), reason).
+
+        The reason matters as much as the text. A sign-in that never
+        completed looks identical to a recording that genuinely has no
+        captions, and reporting the first as the second is exactly what hid
+        this class of failure before: one is worth another run, the other is
+        final.
+        """
         if host not in self.ready and not self._sign_in(host):
-            return None
+            return None, SIGNIN
         base = f"https://{host}/Panopto"
         deliv = self._delivery(host, guid)
         if not deliv.get("SessionName"):
@@ -186,9 +194,12 @@ class PanoptoClient:
             if self._authorise_video(host, guid):
                 deliv = self._delivery(host, guid)
         if not deliv:
-            return None
+            # Still nothing once its viewer has been opened: the session did
+            # not carry, so this deserves another attempt rather than a
+            # verdict of "no captions".
+            return None, SIGNIN
         if not deliv.get("HasCaptions"):
-            return None
+            return None, NONE
         title = deliv.get("SessionName") or guid
         # The language code varies per site; take it from the session itself.
         langs = [c.get("Language") for c in deliv.get("AvailableCaptions", [])]
@@ -199,8 +210,10 @@ class PanoptoClient:
             if r.ok:
                 srt = r.text()
                 if len(srt) > 50:
-                    return title, srt_to_text(srt)
-        return None
+                    return (title, srt_to_text(srt)), "ok"
+        # It says it has captions but would not hand them over - a fault on
+        # the way, not an absence.
+        return None, ERROR
 
 
 def youtube_title(video_id: str) -> str | None:

@@ -457,10 +457,10 @@ def _sync_transcripts(sess: MoodleSession, cfg: Config, manifest: Manifest,
             if ids:
                 if panopto is None:
                     panopto = captions.PanoptoClient(sess)
-                got = panopto.transcript(*ids)
+                got, why = panopto.transcript(*ids)
                 if not got:
                     no_captions.setdefault(week, []).append(
-                        (label, url, captions.NONE))
+                        (label, url, why))
                     continue
                 title, text = got
                 source = "Panopto"
@@ -588,14 +588,21 @@ def _transcribe_moodle_videos(sess: MoodleSession, cfg: Config,
                     break
 
             # 2. otherwise let the AI listen to it
+            why = captions.NONE
             if not text and cfg.transcribe_media and summariser.can_transcribe:
                 try:
                     text = _ai_read_video(sess, cfg, summariser, url)
+                except ai.QuotaExhausted as e:
+                    # The allowance ran out, not the captions. Saying "no
+                    # captions" here would retire a recording that a later
+                    # sync can still read.
+                    why = captions.BLOCKED
+                    print(f"    ! {title}: {e}")
                 except (ai.AIError, OSError) as e:
                     print(f"    ! {title}: {e}")
             if not text:
                 no_captions.setdefault(week, []).append(
-                    (name, url, captions.NONE))
+                    (name, url, why))
                 continue
 
             summary = ""

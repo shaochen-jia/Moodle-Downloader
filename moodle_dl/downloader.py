@@ -19,9 +19,23 @@ def _long(p: Path) -> Path:
     return p
 
 
-def sanitize(name: str) -> str:
+def sanitize(name: str, limit: int = 150) -> str:
+    """Make a filename safe and short enough, without losing its extension.
+
+    Trimming blindly to a length cut the suffix off a long name, which leaves
+    Windows with a file it will not open - and hides the extension from the
+    skip-list and video checks that read it back.
+    """
     name = _ILLEGAL.sub("_", name).strip(" .")
-    return name[:150] or "file"
+    if len(name) <= limit:
+        return name or "file"
+    stem, dot, suffix = name.rpartition(".")
+    if dot and stem and 0 < len(suffix) <= 10:
+        keep = max(1, limit - len(suffix) - 1)
+        name = f"{stem[:keep].strip(' .')}.{suffix}"
+    else:
+        name = name[:limit]
+    return name.strip(" ") or "file"
 
 
 def filename_from_response(resp, fallback_url: str) -> str:
@@ -53,8 +67,8 @@ class Manifest:
 
     def has(self, url: str) -> bool:
         entry = self.data.get(self.key(url))
-        if not entry:
-            return False
+        if not isinstance(entry, dict) or not entry.get("path"):
+            return False  # missing or hand-edited entry: fetch it again
         # If the file was deleted locally, download it again.
         return _long(Path(entry["path"])).exists()
 

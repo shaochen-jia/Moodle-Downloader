@@ -1,99 +1,225 @@
 # Moodle Downloader
 
-English | [简体中文](README.zh-CN.md)
+**English** | [简体中文](README.zh-CN.md)
 
-**Built for Monash University students.** It is written against Monash's
-Moodle, Panopto and single sign-on; other institutions are out of scope.
+![version](https://img.shields.io/badge/version-0.4.3-blue)
+![platform](https://img.shields.io/badge/Windows-one%20file%2C%20no%20install-success)
+![python](https://img.shields.io/badge/python-3.10%2B-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+![AI](https://img.shields.io/badge/AI-optional%2C%20off%20by%20default-lightgrey)
 
-Keeps every lecture slide, tutorial sheet and assignment brief published on
-Moodle filed into weekly folders — by itself, all semester.
-Lecture recordings are turned into readable transcripts, so a week's material
-is text you can search, skim or paste into a chatbot. Late-released files like
-tutorial solutions are picked up automatically on the next sync, and nothing is
-ever downloaded twice.
+**Your unit's files, filed into week folders, by themselves, all semester.**
+Lecture recordings become readable transcripts, so a week's material is text
+you can search, skim, or paste into a chatbot.
 
-```
-Your folder/
-├── FIT5003/
-│   ├── Week 00 ... Week 12/
-│   │   ├── lecture slides, worksheets, solutions ...
-│   │   ├── Week 02 Summary.md      <- what happened this week
-│   │   └── Transcripts/            <- lecture recordings as text
-│   ├── Assignments/                <- briefs, rubrics + an assessment index
-│   └── _Other/                     <- files that belong to no week
-└── FIT5136/
-    └── ...
-```
+> **Built for Monash University students.** It is written against Monash's
+> Moodle, Panopto and single sign-on. Other universities are out of scope —
+> the course structure it understands is Monash's custom one.
 
 ![The app window](docs/app-dashboard.png)
 
-## Getting started (Windows, no installation)
+---
 
-1. Download `MoodleDownloader.exe` from [Releases](../../releases) and put it
-   in any folder. Windows may warn about an unknown publisher — that is normal
-   for free unsigned software; choose **More info → Run anyway**.
-2. Double-click it. Pick where files should be saved, then click **Load my
-   courses from Moodle** and log in when the browser window appears — tick
+## What it actually does
+
+You click once. From then on, this happens on its own:
+
+| | What you get | Set-up needed |
+| :-- | :-- | :-- |
+| 📂 **Files** | Every slide, worksheet, reading and solution, filed into `Week 00` – `Week 12` | none |
+| 🕐 **Late files** | Tutorial solutions posted three days after class arrive by themselves | none |
+| 📝 **Assignments** | Briefs and rubrics per assignment, plus an index of every assessment with due dates | none |
+| 🎧 **Transcripts** | Lecture recordings turned into readable text — no video downloaded | none |
+| 🗒️ **Weekly notes** | A `Week NN Summary` listing that week's files, recordings and what's due next | none |
+| 🤖 **AI summaries** | A revision-ready summary on top of each transcript | one API key ([see below](#ai-summaries--optional)) |
+| 🔒 **Your password** | Never seen by the app. Login happens on Monash's own page | none |
+
+**Nothing is ever downloaded twice.** Delete a file by accident and it comes
+back next sync. Move the app and your settings follow.
+
+---
+
+## What one sync does
+
+```mermaid
+flowchart LR
+    A[Wakes up<br/>logon + every 3h] --> B[Restores your<br/>saved session]
+    B --> C[Crawls every<br/>section + subsection]
+    C --> D{Seen this<br/>file before?}
+    D -- no --> E[Download into<br/>the right week]
+    D -- yes --> F[Skip]
+    C --> G[Finds recordings<br/>4 ways staff post them]
+    G --> H[Captions → text]
+    H --> I[Week note<br/>+ optional AI summary]
+    E --> I
+```
+
+It runs with no window and no notification. You only ever see it if your
+Monash login genuinely expired.
+
+---
+
+## Getting started — Windows, nothing to install
+
+1. **Download** `MoodleDownloader.exe` from [Releases](../../releases) and put
+   it anywhere. Windows will warn about an unknown publisher — that is normal
+   for free unsigned software. Choose **More info → Run anyway**.
+2. **Open it**, pick where files should go, then click **Load my courses from
+   Moodle**. Log in when the browser window appears, and tick
    **"Keep me signed in"** so this rarely happens again.
-3. Tick your courses and click **Finish and run first sync**.
-4. Leave **Auto-sync** on. New files then arrive on their own, silently.
+3. **Tick your units** → **Finish and run first sync**.
+4. **Leave Auto-sync on.** That's it. New files arrive on their own.
 
 ![Setup screen](docs/app-setup.png)
 
-Your password is only ever typed into your university's own login page. The
-app never sees it, and nothing is sent anywhere — there is no server and no
-account. Session cookies stay in `%LOCALAPPDATA%\moodle-downloader`.
+> Your password is typed only into Monash's own login page. There is no
+> server, no account, and no telemetry. Session cookies stay on your machine
+> in `%LOCALAPPDATA%\moodle-downloader`.
 
-## How it works
+---
 
-- **Login** — a real browser window handles SSO and MFA. The session is saved
-  and revived on later runs, so syncing is silent until it genuinely expires.
-- **Crawling** — every course section is fetched, including nested
-  sub-sections (Monash nests `Week N` inside a `Learning` section, with
-  `Own-time` / `Real-time` blocks inside each week). Sub-sections inherit their
-  parent's week.
-- **Incremental sync** — a `.manifest.json` in your download folder records
-  what has been fetched. Re-runs only download what is new; deleting a file
-  locally makes it come back; a replaced file is saved beside the original.
-- **Auto-sync** — runs at Windows login and every few hours after that, with
-  no visible window.
-- **Assignments** — briefs and rubrics attached by staff (never your own
-  submissions) go to `UNIT/Assignments/<name>/`, alongside an auto-generated
-  `Assessments.txt` listing every assessment with due dates and links.
-- **Weekly notes** — each week folder gets a `Week NN Summary.md` (and a Word
-  copy) listing that week's files, its lecture recordings and links, and the
-  assessments coming up next. It is rewritten on every sync, so keep your own
-  notes in a different file.
-- **Transcripts** — no video is ever downloaded; only its captions. Panopto
-  (one extra single sign-on) and YouTube recordings become readable
-  transcripts in `Week NN/Transcripts/`. Recordings are found however staff
-  published them: as links, as bare URLs typed into the page, and as videos
-  embedded inside a page activity. Anything without captions — including Zoom
-  cloud recordings — is named in the week note instead, so you know it exists.
-- **AI summaries (optional)** — pick a provider and paste a key in the setup
-  screen and each transcript also gets a Summary section. Gemini (free tier),
-  Claude, OpenAI, DeepSeek, Kimi, GLM, Qwen or a local Ollama all work. Left
-  off, nothing is sent anywhere and the feature simply doesn't appear.
+## What you end up with
 
-## Settings
+```
+Your folder/
+├── FIT5129/
+│   ├── Week 00 … Week 12/
+│   │   ├── lecture slides, worksheets, solutions …
+│   │   ├── Week 02 Summary.docx      ← what happened this week
+│   │   └── Transcripts/              ← lecture recordings as text
+│   ├── Assignments/                  ← briefs, rubrics + assessment index
+│   └── _Other/                       ← anything that matched no week
+└── FIT5136/
+    └── …
+```
 
-Courses, download folder, sync interval and the AI provider are all set in
-the app window. Everything else lives in `config.yaml`, kept once per user at
+| | |
+| :-- | :-- |
+| ![Week folders](docs/folders-weeks.png) | ![Assignment folders](docs/folders-assignments.png) |
+| Every unit gets `Week 00`–`Week 12`, `Assignments` and `_Other`, kept current. | Each assignment gets its own folder — staff attachments only, never your submissions. |
+
+---
+
+## AI summaries — optional
+
+**Everything above works with no API key and nothing sent anywhere.** Leave
+this off and the feature does not appear at all.
+
+### What a key buys you
+
+1. **A summary on top of every transcript** — thorough enough to revise from,
+   not a teaser. Every topic covered gets its own section.
+2. **A fallback when YouTube blocks you.** YouTube rate-limits by IP address.
+   When that happens, Gemini can read the video from Google's side instead —
+   so the transcript still arrives.
+
+### Which one to pick
+
+| If you… | Choose | Why |
+| :-- | :-- | :-- |
+| just want it free | **Gemini** | Google's free tier is the most generous, and it is this tool's default |
+| want nothing leaving your PC | **Ollama** | Runs locally. No key, no cost, no data ever leaves the machine |
+| already pay for ChatGPT / Claude API | **OpenAI** / **Anthropic** | No new account to open |
+| are on a mainland-China network | **DeepSeek**, **GLM**, **Qwen**, **Kimi** | Reachable without a VPN, and cheap |
+
+Pick the provider and paste the key in the setup screen. Nothing else to configure.
+
+### What it costs
+
+Here is the honest arithmetic, so you can judge it yourself:
+
+| | Typical semester |
+| :-- | :-- |
+| Units | 4 |
+| Recordings transcribed | ~100 |
+| API calls | ~100 (one per recording) |
+| Tokens in | ~1,000,000 (a lecture transcript is ~9k tokens) |
+| Tokens out | ~200,000 |
+
+At Gemini 2.5 Flash-Lite's published rate of **$0.10 per million input** and
+**$0.40 per million output**, that works out to roughly **$0.20 for the whole
+semester** — and on the free tier, nothing at all. The tool paces itself to
+6 seconds between calls, so ~100 requests spread over a semester sits well
+inside free-tier limits.
+
+> Prices move, and models get retired. Check the official page before you
+> commit to a paid tier:
+> [Gemini](https://ai.google.dev/gemini-api/docs/pricing) ·
+> [OpenAI](https://openai.com/api/pricing/) ·
+> [Anthropic](https://www.anthropic.com/pricing) ·
+> [DeepSeek](https://api-docs.deepseek.com/quick_start/pricing) ·
+> [Moonshot / Kimi](https://platform.moonshot.cn/docs/pricing) ·
+> [Zhipu GLM](https://open.bigmodel.cn/pricing) ·
+> [Qwen](https://help.aliyun.com/zh/model-studio/billing-for-model-studio)
+
+Your key is stored in your own config file and is only ever sent to the
+provider it belongs to.
+
+---
+
+## When something can't be done, it says so
+
+Silent skipping is how bugs stay invisible, so every recording that produces
+no transcript is named in the week note **with a reason** — and the reason
+tells you whether it is worth waiting for:
+
+| What you'll read | Meaning | Will it retry? |
+| :-- | :-- | :-- |
+| has no captions | genuinely none — e.g. a Zoom cloud recording | no, that's final |
+| the platform is rate-limiting us | YouTube blocked our address for now | yes, next sync |
+| could not be reached | network or platform hiccup | yes, next sync |
+| needs you to sign in to the video platform | Panopto wants one more sign-on | yes, next sync |
+| queued for the next sync | held back on purpose, to stay under YouTube's limits | yes, next sync |
+
+---
+
+## What you can change
+
+Courses, download folder, sync interval and the AI provider are all in the app
+window. Everything else lives in one `config.yaml`, kept per-user at
 `%LOCALAPPDATA%\moodle-downloader\` — so replacing or moving the app never
-loses your settings:
+loses your settings.
 
-| Key | Meaning |
-| --- | --- |
-| `root_dir` | Where course files are saved |
-| `course_selection` | `manual` (fixed list) or `starred` (follows Moodle stars) |
-| `sync_interval_hours` | Auto-sync interval, default `3` |
-| `section_patterns` | Regexes matching a section title to a week, e.g. add `"module\\s*0*{week}\\b"` |
-| `assignments_folder` | Set to `""` to skip assignments entirely |
-| `weekly_notes` | `false` turns off the weekly summary notes |
-| `transcripts` | `false` turns off caption downloads |
-| `ai_provider` / `ai_api_key` | Optional AI summaries — see `config.example.yaml` for the provider list |
+| Setting | What it does | Default |
+| :-- | :-- | :-- |
+| `root_dir` | Where course files are saved | `./MoodleFiles` |
+| `course_selection` | `manual` (fixed list) or `starred` (follows your Moodle stars) | `manual` |
+| `sync_interval_hours` | How often auto-sync runs | `3` |
+| `section_patterns` | Regexes matching a section title to a week — add `"module\s*0*{week}\b"` if your unit says "Module 3" | Week / Topic |
+| `assignments_folder` | Set to `""` to skip assignments entirely | `Assignments` |
+| `weekly_notes` | `false` turns off the weekly summary notes | `true` |
+| `transcripts` | `false` turns off caption downloads | `true` |
+| `note_formats` | Output formats — `docx`, `txt`, `md` | `docx`, `txt` |
+| `max_youtube_per_sync` | YouTube caption fetches allowed **per sync, across all units** | `8` |
+| `ai_provider` / `ai_api_key` | Optional AI summaries | off |
 
-## Developers / macOS / Linux
+> **Why Word and not Markdown?** Most people have never opened a `.md` file,
+> and every chatbot accepts `.docx` and `.txt`. Markdown is available but off.
+
+---
+
+## FAQ
+
+**A browser window opened and asked me to log in.**
+Your saved session expired. Log in there and the sync carries on by itself.
+Don't close the window.
+
+**My unit says "Module 3" instead of "Week 3".**
+Add a pattern to `section_patterns` in `config.yaml`.
+
+**Files went into `_Other/`.**
+That section's title matched no week pattern — same fix as above.
+
+**I moved the exe and auto-sync stopped.**
+Turn Auto-sync off and on again to re-register the new location.
+
+**Is this allowed?**
+It downloads material from units you are enrolled in, through your own login,
+for your own study — the same files you could click one at a time.
+
+---
+
+## Developers · macOS · Linux
 
 Requires Python 3.10+.
 
@@ -103,35 +229,20 @@ python run.py            # GUI
 python run.py sync       # headless sync, for cron or Task Scheduler
 ```
 
-The app drives a real browser via Playwright, using system Edge or Chrome when
+It drives a real browser through Playwright, using system Edge or Chrome when
 available; otherwise run `playwright install chromium` once. macOS and Linux
 should work but are not regularly tested.
 
 Build the Windows executable:
 
 ```bash
-pyinstaller --onefile --noconsole --name MoodleDownloader ^
-  --version-file version_info.txt ^
-  --collect-all playwright --collect-all customtkinter run.py
+pyinstaller MoodleDownloader.spec --noconfirm
 ```
 
-## FAQ
+`docs/maintainer-notes.md` records the findings behind the crawler, the
+caption pipeline and the AI handling — read it before changing any of them.
 
-**A browser window opened and asked me to log in.** The saved session expired
-— log in there and the sync continues by itself. Don't close the window.
-
-**My unit uses "Module 3" instead of "Week 3".** Add a pattern to
-`section_patterns` in `config.yaml`.
-
-**Files went to `_Other/`.** That section's title matched no week pattern —
-same fix as above.
-
-**I moved the exe and auto-sync stopped.** Turn Auto-sync off and on again to
-re-register the new location.
-
-**Is this allowed?** It downloads material from units you are enrolled in,
-through your own login, for personal study — the same files you could click
-one by one.
+---
 
 ## License
 

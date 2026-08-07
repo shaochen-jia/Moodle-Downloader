@@ -140,7 +140,11 @@ def _post(url: str, payload: dict, headers: dict, retries: int = 2) -> dict:
                 time.sleep(RATE_LIMIT_BACKOFF_S * (attempt + 1))
                 continue
             message = _readable(e.code, body)
-            if e.code == 429 or "RESOURCE_EXHAUSTED" in body:
+            # A 403 that survives every retry is throttling rather than a bad
+            # key, and it will keep answering the same way for the rest of the
+            # run - so it has to trip the circuit breaker too. Without this,
+            # each remaining item pays the full backoff again.
+            if e.code in (403, 429) or "RESOURCE_EXHAUSTED" in body:
                 raise QuotaExhausted(message) from None
             raise AIError(message) from None
         except Exception as e:
