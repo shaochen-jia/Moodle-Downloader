@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-0.4.4-blue)
+![version](https://img.shields.io/badge/version-0.4.5-blue)
 ![platform](https://img.shields.io/badge/Windows-one%20file%2C%20no%20install-success)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -183,6 +183,7 @@ tells you whether it is worth waiting for:
 | What you'll read | Meaning | Will it retry? |
 | :-- | :-- | :-- |
 | has no captions | genuinely none — e.g. a Zoom cloud recording | no, that's final |
+| only Gemini can watch a recording itself | no captions, and your AI provider can't watch video | no — but switching to Gemini fetches it |
 | the platform is rate-limiting us | YouTube blocked our address for now | yes, next sync |
 | could not be reached | network or platform hiccup | yes, next sync |
 | needs you to sign in to the video platform | Panopto wants one more sign-on | yes, next sync |

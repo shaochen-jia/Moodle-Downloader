@@ -34,6 +34,37 @@ def default_config_path() -> Path:
     return config_path_for(app_dir())
 
 
+def _sweep_stale_unpack_dirs() -> None:
+    """Delete unpack folders left behind by earlier runs.
+
+    A one-file build unpacks its whole runtime into %TEMP%\\_MEInnnnnn on every
+    launch and removes it on a clean exit. A run that is killed instead - Task
+    Manager, a forced shutdown, or simply restarting Windows while auto-sync is
+    running - never gets to clean up, and each one strands about 150 MB. Over a
+    semester of daily reboots that is real disk.
+
+    A folder still in use cannot be deleted on Windows, because its loaded DLLs
+    are locked; that failure is the safety check that stops this touching a
+    second copy of the app that is currently running.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    import re
+    import shutil
+    import tempfile
+
+    mine = Path(getattr(sys, "_MEIPASS", "")).resolve()
+    try:
+        for d in Path(tempfile.gettempdir()).glob("_MEI*"):
+            if not d.is_dir() or not re.fullmatch(r"_MEI\d+", d.name):
+                continue
+            if d.resolve() == mine:
+                continue
+            shutil.rmtree(d, ignore_errors=True)
+    except OSError:
+        pass  # housekeeping, never worth failing a sync over
+
+
 def _load_or_offer_setup(config_path: Path):
     if not config_path.exists():
         print("No settings found yet - let's set things up first.")
@@ -154,6 +185,7 @@ def autosync_loop(config_path: Path) -> int:
 
 
 def cli() -> int:
+    _sweep_stale_unpack_dirs()
     if len(sys.argv) == 1:
         try:
             from moodle_dl.gui import run_gui

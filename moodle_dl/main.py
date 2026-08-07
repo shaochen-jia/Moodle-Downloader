@@ -589,17 +589,23 @@ def _transcribe_moodle_videos(sess: MoodleSession, cfg: Config,
 
             # 2. otherwise let the AI listen to it
             why = captions.NONE
-            if not text and cfg.transcribe_media and summariser.can_transcribe:
-                try:
-                    text = _ai_read_video(sess, cfg, summariser, url)
-                except ai.QuotaExhausted as e:
-                    # The allowance ran out, not the captions. Saying "no
-                    # captions" here would retire a recording that a later
-                    # sync can still read.
-                    why = captions.BLOCKED
-                    print(f"    ! {title}: {e}")
-                except (ai.AIError, OSError) as e:
-                    print(f"    ! {title}: {e}")
+            if not text and cfg.transcribe_media:
+                if not summariser.can_transcribe:
+                    # Reading a video is a capability, not a setting: only
+                    # Gemini has it. Reporting "no captions" here would read
+                    # as final when switching provider would fetch it.
+                    why = captions.NO_READER
+                else:
+                    try:
+                        text = _ai_read_video(sess, cfg, summariser, url)
+                    except ai.QuotaExhausted as e:
+                        # The allowance ran out, not the captions. Saying "no
+                        # captions" here would retire a recording that a later
+                        # sync can still read.
+                        why = captions.BLOCKED
+                        print(f"    ! {title}: {e}")
+                    except (ai.AIError, OSError) as e:
+                        print(f"    ! {title}: {e}")
             if not text:
                 no_captions.setdefault(week, []).append(
                     (name, url, why))

@@ -31,6 +31,11 @@ BLOCKED = "blocked"      # the platform is rate-limiting us
 ERROR = "error"          # network or platform failure
 SIGNIN = "needs-signin"  # the platform wants a human to authenticate
 DEFERRED = "deferred"    # held back on purpose to avoid a burst of requests
+# No captions, and nothing configured can watch the recording itself. Not
+# retryable - a later sync changes nothing - but not the dead end "none"
+# implies either: reading a video is a capability only some providers have,
+# so this one is fixed in the settings rather than by waiting.
+NO_READER = "no-video-reader"
 
 RETRYABLE = {BLOCKED, ERROR, SIGNIN, DEFERRED}
 
@@ -42,6 +47,8 @@ _REASON_TEXT = {
     ERROR: "could not be reached - will retry",
     SIGNIN: "needs you to sign in to the video platform",
     DEFERRED: "queued for the next sync, to stay under YouTube's limits",
+    NO_READER: "no captions, and only Gemini can watch a recording itself - "
+               "switch the AI provider to Gemini to get this one",
 }
 
 

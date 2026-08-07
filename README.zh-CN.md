@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-![version](https://img.shields.io/badge/version-0.4.4-blue)
+![version](https://img.shields.io/badge/version-0.4.5-blue)
 ![platform](https://img.shields.io/badge/Windows-单文件%20免安装-success)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -170,6 +170,7 @@ flowchart LR
 | 你会看到 | 意思 | 会重试吗 |
 | :-- | :-- | :-- |
 | has no captions | 真的没有字幕——比如 Zoom 云录像 | 不会，这是最终结论 |
+| only Gemini can watch a recording itself | 没字幕，而你当前的 AI 服务商看不了视频 | 不会——但换成 Gemini 就能拿到 |
 | the platform is rate-limiting us | YouTube 暂时把我们的地址挡了 | 会，下次同步 |
 | could not be reached | 网络或平台抽风 | 会，下次同步 |
 | needs you to sign in to the video platform | Panopto 还要再登录一次 | 会，下次同步 |
