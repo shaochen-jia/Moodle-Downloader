@@ -15,3 +15,7 @@ dist/
 __pycache__/
 *.pyc
 .venv/
+
+# screenshots kept locally but not published
+docs/week-summary1.png
+docs/transcript-summary.png
