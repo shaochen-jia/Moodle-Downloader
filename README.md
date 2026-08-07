@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-![version](https://img.shields.io/badge/version-0.4.3-blue)
+![version](https://img.shields.io/badge/version-0.4.4-blue)
 ![platform](https://img.shields.io/badge/Windows-one%20file%2C%20no%20install-success)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -30,7 +30,7 @@ You click once. From then on, this happens on its own:
 | 🕐 **Late files** | Tutorial solutions posted three days after class arrive by themselves | none |
 | 📝 **Assignments** | Briefs and rubrics per assignment, plus an index of every assessment with due dates | none |
 | 🎧 **Transcripts** | Lecture recordings turned into readable text — no video downloaded | none |
-| 🗒️ **Weekly notes** | A `Week NN Summary` listing that week's files, recordings and what's due next | none |
+| 🗒️ **Weekly notes** | A `Week NN Summary` telling you **what happened this week** — what landed, what was recorded, what's due next | none |
 | 🤖 **AI summaries** | A revision-ready summary on top of each transcript | one API key ([see below](#ai-summaries--optional)) |
 | 🔒 **Your password** | Never seen by the app. Login happens on Monash's own page | none |
 
@@ -97,6 +97,23 @@ Your folder/
 | :-- | :-- |
 | ![Week folders](docs/folders-weeks.png) | ![Assignment folders](docs/folders-assignments.png) |
 | Every unit gets `Week 00`–`Week 12`, `Assignments` and `_Other`, kept current. | Each assignment gets its own folder — staff attachments only, never your submissions. |
+
+### The weekly note answers one question: what happened this week?
+
+![A week summary](docs/week-summary2.png)
+
+Open a unit after a week away and the honest question is not *"what does this
+material say?"* — it's *"what changed, and what have I missed?"* That is what
+this note answers: which files landed, which lectures were recorded, and what
+is due next.
+
+> **It deliberately does not summarise the content.**
+> Reading and condensing every file would burn through an API allowance fast,
+> and you almost certainly already have a tool you like for that — so the note
+> stays a factual record and leaves the thinking to you. It saves you the time,
+> not the study.
+
+The note is rewritten on every sync, so keep your own notes in a different file.
 
 ---
 

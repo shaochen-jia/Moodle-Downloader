@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-![version](https://img.shields.io/badge/version-0.4.3-blue)
+![version](https://img.shields.io/badge/version-0.4.4-blue)
 ![platform](https://img.shields.io/badge/Windows-单文件%20免安装-success)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
@@ -29,7 +29,7 @@ AI 的文本。
 | 🕐 **补发的文件** | 课后三天才放出来的 tutorial 答案，自己就来了 | 不需要 |
 | 📝 **作业** | 每个作业的说明和评分标准各一个文件夹，外加一份含截止日期的考核索引 | 不需要 |
 | 🎧 **录像文字稿** | 课程录像转成可读文字——不下载视频本身 | 不需要 |
-| 🗒️ **每周小结** | 一份 `Week NN Summary`，列出本周文件、录像，以及接下来要交什么 | 不需要 |
+| 🗒️ **每周小结** | 一份 `Week NN Summary`，告诉你**这周发生了什么**——来了哪些文件、录了哪些课、接下来要交什么 | 不需要 |
 | 🤖 **AI 摘要** | 每份文字稿上方多一段可直接拿来复习的摘要 | 一个 API key（[见下](#ai-摘要可选)） |
 | 🔒 **你的密码** | 程序永远看不到。登录发生在 Monash 自己的页面上 | 不需要 |
 
@@ -93,6 +93,21 @@ flowchart LR
 | :-- | :-- |
 | ![周文件夹](docs/folders-weeks.png) | ![作业文件夹](docs/folders-assignments.png) |
 | 每门课都有 `Week 00`–`Week 12`、`Assignments` 和 `_Other`，并一直保持最新。 | 每个作业一个文件夹——只抓老师上传的附件，绝不碰你自己的提交。 |
+
+### 每周小结只回答一个问题：这周发生了什么？
+
+![每周小结](docs/week-summary2.png)
+
+隔了一周再打开一门课，你真正想知道的不是「这些材料讲了什么」，而是
+**「有什么变了、我错过了什么」**。这份小结回答的就是后者：来了哪些文件、
+哪几节课有录像、接下来要交什么。
+
+> **它刻意不去总结内容。**
+> 把每份文件都读一遍再浓缩，API 额度很快就见底；而且你手上大概率已经有一个
+> 你惯用的总结工具了。所以这份小结只做事实记录，思考留给你。
+> 它省的是你的时间，不是你的学习。
+
+小结在每次同步时都会重写，所以你自己的笔记请记在另一个文件里。
 
 ---
 

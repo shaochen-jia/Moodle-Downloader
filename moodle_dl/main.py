@@ -414,7 +414,7 @@ def _open_page(sess: MoodleSession, act: Activity, depth: int = 0,
         return []
 
     found = extract_media_urls(html)
-    out = [(act.name if len(found) == 1 else f"{act.name} â€” {label}", url)
+    out = [(act.name if len(found) == 1 else f"{act.name} — {label}", url)
            for label, url in found]
 
     # Nothing playable here: follow any Moodle activity this one points to.
